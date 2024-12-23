@@ -1,36 +1,23 @@
 
 import os
-import time
-import json
-import ast
 import sys
 import ssl
 import urllib3
-from cachetools import TTLCache
-from functools import lru_cache
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from flask import Flask, request, jsonify
+
+from flask import Flask, request
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
-from flask_security import Security, SQLAlchemyUserDatastore, UserMixin, RoleMixin
+from flask_security import Security, SQLAlchemyUserDatastore
 from flask_security import RegisterForm, LoginForm
 from wtforms import StringField
 from wtforms.validators import DataRequired
 from flask_bootstrap import Bootstrap
 from flask_wtf.csrf import CSRFProtect
-from gunicorn.sock import ssl_context
 import eventlet
 
 
 eventlet.monkey_patch(thread=False)  # Add thread=False to help with recursion issues
 sys.setrecursionlimit(3000)
-
-import numpy as np
-import pandas as pd
-import redis
-from keras import Model, Sequential
-from keras.src.saving import load_model
-import tensorflow as tf
 
 from xyz.modules.gateway import gateway_blueprint
 from xyz.modules.llm import llm_blueprint, embedding_tool
@@ -143,19 +130,6 @@ def handle_typing(data):
 def handle_stop_typing(data):
     emit('stop_typing', data, broadcast=True, include_self=False)
 
-
-@lru_cache(maxsize=100)
-def load_keras_model(ticker):
-    """Load and cache the Keras model in memory."""
-    try:
-        model_path = f"models/{ticker}_model.h5"
-        if os.path.exists(model_path):
-            return load_model(model_path)
-        logger.warning(f"No model found for {ticker}")
-        return None
-    except Exception as e:
-        logger.error(f"Error loading model for {ticker}: {str(e)}")
-        return None
 
 
 @app.route('/api/chat', methods=['POST'])

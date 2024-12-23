@@ -1,17 +1,15 @@
 import config
-import embedding_tools.embedding_model as embedding_model
-import embedding_tools.embedding_generator as generator
 import pandas as pd
 from flask import jsonify
 
-from xyz.modules.llm.embedding_tools.embedding_model import embedding_model
+from xyz.modules.llm.embedding_tools import embedding_model, embedding_generator
 
 logger = config.logger
 OAI = config.OAI
 
 def read_code(update=False):
     if update:
-        generator.create_embeddings_of_self()
+        embedding_generator.create_embeddings_of_self()
 
     df = embedding_model.read_embedding('embeddings/code_metadata.csv')
     return df
