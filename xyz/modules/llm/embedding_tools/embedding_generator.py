@@ -320,7 +320,7 @@ def run(update=False):
     if update:
         create_embeddings_of_self()
     else:
-        df = read_embedding('embeddings/code_metadata.csv')
+        df = read_embedding()
 
 
 def save_embeddings(directory, output_path):
