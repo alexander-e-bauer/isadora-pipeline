@@ -17,12 +17,13 @@ import eventlet
 eventlet.monkey_patch(thread=False)
 sys.setrecursionlimit(3000)
 
-#from xyz.modules.gateway import gateway_blueprint
 from xyz.modules.llm import llm_blueprint, embedding_tool
 from xyz.modules.database import database, models
 import config
+
 OAI = config.OAI
 logger = config.logger
+
 
 # SSL Configuration
 def create_ssl_context():
@@ -35,6 +36,7 @@ def create_ssl_context():
         logger.error(f"Failed to create SSL context: {e}")
         return None
 
+
 # Configure SSL for requests
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 ssl_context = create_ssl_context()
@@ -44,17 +46,33 @@ conversation_history = {}
 
 app = Flask(__name__)
 
-# Updated CORS Configuration
+# CORS Configuration with all necessary headers
 CORS(app, resources={
     r"/*": {
         "origins": [
-            "https://isadora-v2-74e5a1b97f07.herokuapp.com"
+            "http://localhost:3000",
+            "http://localhost:5000",
+            "https://isadora-v2-74e5a1b97f07.herokuapp.com",
+            "https://isadora-f5fbebf38bc6.herokuapp.com"
         ],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
-        "expose_headers": ["Content-Type", "Authorization"],
+        "allow_headers": [
+            "Content-Type",
+            "Authorization",
+            "X-Requested-With",
+            "Accept",
+            "Origin",
+            "Access-Control-Request-Method",
+            "Access-Control-Request-Headers"
+        ],
+        "expose_headers": [
+            "Content-Type",
+            "Authorization",
+            "Access-Control-Allow-Origin",
+            "Access-Control-Allow-Credentials"
+        ],
         "supports_credentials": True,
-        "send_wildcard": False
+        "max_age": 86400  # Cache preflight requests for 24 hours
     }
 })
 
@@ -76,55 +94,91 @@ socketio = SocketIO(
     cookie=False
 )
 
-# Flask configuration
-app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY")
 
-# Database configuration
-username_db = os.getenv('POSTGRES_USER')
-password_db = os.getenv('POSTGRES_PASSWORD')
-database_name = os.getenv('POSTGRES_DB')
-postgres_uri = f'postgresql://{username_db}:{password_db}@localhost/{database_name}'
-app.config['SQLALCHEMY_DATABASE_URI'] = postgres_uri
+# ... (keep all your existing configurations)
 
-app.config['SECURITY_PASSWORD_SALT'] = os.environ.get("SECURITY_PASSWORD_SALT")
+# Add CORS headers to all responses
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get('Origin')
+    if origin in [
+        "http://localhost:3000",
+        "http://localhost:5000",
+        "https://isadora-v2-74e5a1b97f07.herokuapp.com",
+        "https://isadora-f5fbebf38bc6.herokuapp.com"
+    ]:
+        response.headers['Access-Control-Allow-Origin'] = origin
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept, Origin'
+    return response
 
-# Create database connection object
-db = database.init_app(app)
 
-# Define models
-User, Role, roles_users = models.define_models(db)
+# Updated Routes with proper CORS handling
+@app.route('/api/chat', methods=['POST', 'OPTIONS'])
+def chat():
+    if request.method == 'OPTIONS':
+        response = make_response()
+        origin = request.headers.get('Origin')
+        if origin in [
+            "http://localhost:3000",
+            "http://localhost:5000",
+            "https://isadora-v2-74e5a1b97f07.herokuapp.com",
+            "https://isadora-f5fbebf38bc6.herokuapp.com"
+        ]:
+            response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers[
+            'Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept, Origin'
+        response.headers['Access-Control-Max-Age'] = '86400'
+        return response
 
-# Setup Flask-Security
-user_datastore = SQLAlchemyUserDatastore(db, User, Role)
-app.config['SECURITY_REGISTERABLE'] = True
-app.config['SECURITY_RECOVERABLE'] = True
-app.config['SECURITY_CHANGEABLE'] = True
-app.config['SECURITY_REGISTER_URL'] = '/register'
-app.config['SECURITY_LOGIN_URL'] = '/login'
-app.config['SECURITY_LOGOUT_URL'] = '/logout'
-app.config['SECURITY_RESET_URL'] = '/reset'
-app.config['SECURITY_CHANGE_URL'] = '/change'
+    data = request.json
+    result = embedding_tool.jsonify_chat(data, conversation_history)
+    response = make_response(result)
+    return response
 
-class ExtendedRegisterForm(RegisterForm):
-    first_name = StringField('First Name', [DataRequired()])
-    last_name = StringField('Last Name', [DataRequired()])
 
-class ExtendedLoginForm(LoginForm):
-    email = StringField('Email Address', [DataRequired()])
+@app.route('/', methods=['GET', 'OPTIONS'])
+def index():
+    if request.method == 'OPTIONS':
+        response = make_response()
+    else:
+        response = make_response("Hello, World!")
 
-security = Security(app, user_datastore,
-                   register_form=ExtendedRegisterForm,
-                   login_form=ExtendedLoginForm)
+    origin = request.headers.get('Origin')
+    if origin in [
+        "http://localhost:3000",
+        "http://localhost:5000",
+        "https://isadora-v2-74e5a1b97f07.herokuapp.com",
+        "https://isadora-f5fbebf38bc6.herokuapp.com"
+    ]:
+        response.headers['Access-Control-Allow-Origin'] = origin
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    return response
 
-# CSRF
-csrf = CSRFProtect(app)
 
-# Bootstrap
-Bootstrap(app)
+# Error handling with CORS headers
+@app.errorhandler(Exception)
+def handle_error(error):
+    logger.error(f"An error occurred: {error}")
+    response = jsonify({
+        "error": str(error),
+        "message": "An internal error occurred"
+    })
+    origin = request.headers.get('Origin')
+    if origin in [
+        "http://localhost:3000",
+        "http://localhost:5000",
+        "https://isadora-v2-74e5a1b97f07.herokuapp.com",
+        "https://isadora-f5fbebf38bc6.herokuapp.com"
+    ]:
+        response.headers['Access-Control-Allow-Origin'] = origin
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    return response, 500
 
-# Blueprints
-#gw = gateway_blueprint.init_app(app)
-oai = llm_blueprint.init_app(app)
+
 
 # Debug logging
 @app.before_request
@@ -146,7 +200,6 @@ def handle_typing(data):
 def handle_stop_typing(data):
     emit('stop_typing', data, broadcast=True, include_self=False)
 
-# New Socket.IO error handlers
 @socketio.on_error()
 def error_handler(e):
     logger.error(f"SocketIO error: {e}")
