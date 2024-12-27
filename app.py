@@ -2,26 +2,19 @@ import os
 import sys
 import ssl
 import urllib3
-
 from flask import Flask, request, make_response, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
-from flask_security import Security, SQLAlchemyUserDatastore
-from flask_security import RegisterForm, LoginForm
-from wtforms import StringField
-from wtforms.validators import DataRequired
-from flask_bootstrap import Bootstrap
-from flask_wtf.csrf import CSRFProtect
 import eventlet
 
 eventlet.monkey_patch(thread=False)
 sys.setrecursionlimit(3000)
 
-from xyz.modules.llm import llm_blueprint, embedding_tool
-from xyz.modules.database import database, models
+from xyz.modules.llm import embedding_tool
 import config
 OAI = config.OAI
 logger = config.logger
+
 
 # SSL Configuration
 def create_ssl_context():
@@ -34,55 +27,52 @@ def create_ssl_context():
         logger.error(f"Failed to create SSL context: {e}")
         return None
 
-# Configure SSL for requests
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 ssl_context = create_ssl_context()
 
-# In-memory storage for conversation history
 conversation_history = {}
 
 app = Flask(__name__)
 
-# Allowed origins
+# Explicitly define allowed origins
 ALLOWED_ORIGINS = [
-    'http://localhost:3000',
+    'https://isadora-f5fbebf38bc6.herokuapp.com',
     'https://isadora-v2-74e5a1b97f07.herokuapp.com',
-    'https://isadora-f5fbebf38bc6.herokuapp.com'
+    'http://localhost:3000'
 ]
 
-# CORS Configuration matching React app requirements
-CORS(app, resources={
-    r"/*": {
-        "origins": ALLOWED_ORIGINS,
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": [
-            "Content-Type",
-            "Authorization",
-            "X-Requested-With",
-            "Accept",
-            "Origin",
-            "Access-Control-Request-Method",
-            "Access-Control-Request-Headers"
-        ],
-        "expose_headers": [
-            "Content-Type",
-            "Authorization",
-            "Access-Control-Allow-Origin",
-            "Access-Control-Allow-Credentials"
-        ],
-        "supports_credentials": True,
-        "send_wildcard": False,
-        "max_age": 86400
-    }
-})
+# Updated CORS configuration with explicit options
+CORS(app,
+     resources={
+         r"/*": {
+             "origins": ALLOWED_ORIGINS,
+             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+             "allow_headers": [
+                 "Content-Type",
+                 "Authorization",
+                 "X-Requested-With",
+                 "Accept",
+                 "Origin",
+                 "Access-Control-Request-Method",
+                 "Access-Control-Request-Headers"
+             ],
+             "expose_headers": [
+                 "Content-Type",
+                 "Authorization"
+             ],
+             "supports_credentials": True,
+             "send_wildcard": False,
+             "max_age": 86400
+         }
+     })
 
-# SocketIO Configuration matching React app socket config
+# Configure SocketIO with explicit CORS settings
 socketio = SocketIO(
     app,
     cors_allowed_origins=ALLOWED_ORIGINS,
     async_mode='eventlet',
-    ping_timeout=60,  # Matching frontend timeout
-    ping_interval=15,
+    ping_timeout=60000,
+    ping_interval=25000,
     always_connect=True,
     path='/socket.io',
     transport=['websocket', 'polling'],
@@ -91,85 +81,76 @@ socketio = SocketIO(
 )
 
 # Flask configuration
-app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY")
+app.config.update(
+    SECRET_KEY=os.environ.get("SECRET_KEY"),
+    SQLALCHEMY_DATABASE_URI=f'postgresql://{os.getenv("POSTGRES_USER")}:{os.getenv("POSTGRES_PASSWORD")}@localhost/{os.getenv("POSTGRES_DB")}',
+    SECURITY_PASSWORD_SALT=os.environ.get("SECURITY_PASSWORD_SALT"),
+    # Security configuration
+    SECURITY_REGISTERABLE=True,
+    SECURITY_RECOVERABLE=True,
+    SECURITY_CHANGEABLE=True,
+    SECURITY_REGISTER_URL='/register',
+    SECURITY_LOGIN_URL='/login',
+    SECURITY_LOGOUT_URL='/logout',
+    SECURITY_RESET_URL='/reset',
+    SECURITY_CHANGE_URL='/change',
+    # CORS settings
+    SECURITY_CSRF_COOKIE_NAME="XSRF-TOKEN",
+    SECURITY_CSRF_HEADER_NAME="X-XSRF-TOKEN",
+    WTF_CSRF_CHECK_DEFAULT=False,  # Disable CSRF for API endpoints
+    WTF_CSRF_TIME_LIMIT=None
+)
 
-# Database configuration
-username_db = os.getenv('POSTGRES_USER')
-password_db = os.getenv('POSTGRES_PASSWORD')
-database_name = os.getenv('POSTGRES_DB')
-postgres_uri = f'postgresql://{username_db}:{password_db}@localhost/{database_name}'
-app.config['SQLALCHEMY_DATABASE_URI'] = postgres_uri
 
-app.config['SECURITY_PASSWORD_SALT'] = os.environ.get("SECURITY_PASSWORD_SALT")
+# Debug logging
+@app.before_request
+def log_request_info():
+    logger.debug('Headers: %s', request.headers)
+    logger.debug('Body: %s', request.get_data())
 
-# Create database connection object
-db = database.init_app(app)
-
-# Define models
-User, Role, roles_users = models.define_models(db)
-
-# Setup Flask-Security
-user_datastore = SQLAlchemyUserDatastore(db, User, Role)
-app.config['SECURITY_REGISTERABLE'] = True
-app.config['SECURITY_RECOVERABLE'] = True
-app.config['SECURITY_CHANGEABLE'] = True
-app.config['SECURITY_REGISTER_URL'] = '/register'
-app.config['SECURITY_LOGIN_URL'] = '/login'
-app.config['SECURITY_LOGOUT_URL'] = '/logout'
-app.config['SECURITY_RESET_URL'] = '/reset'
-app.config['SECURITY_CHANGE_URL'] = '/change'
-
-class ExtendedRegisterForm(RegisterForm):
-    first_name = StringField('First Name', [DataRequired()])
-    last_name = StringField('Last Name', [DataRequired()])
-
-class ExtendedLoginForm(LoginForm):
-    email = StringField('Email Address', [DataRequired()])
-
-security = Security(app, user_datastore,
-                   register_form=ExtendedRegisterForm,
-                   login_form=ExtendedLoginForm)
-
-# CSRF
-csrf = CSRFProtect(app)
-
-# Bootstrap
-Bootstrap(app)
-
-# Blueprints
-#gw = gateway_blueprint.init_app(app)
-oai = llm_blueprint.init_app(app)
-
-# Add CORS headers to all responses
+# Explicit CORS headers middleware
 @app.after_request
-def add_cors_headers(response):
+def after_request(response):
     origin = request.headers.get('Origin')
     if origin in ALLOWED_ORIGINS:
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept, Origin'
-        response.headers['Access-Control-Max-Age'] = '86400'
+        response.headers.update({
+            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
+            'Access-Control-Max-Age': '86400'
+        })
+    logger.debug('Response Headers: %s', response.headers)
     return response
 
-# Updated chat route with proper CORS and error handling
-@app.route('/api/chat', methods=['POST', 'OPTIONS'])
-def chat():
-    if request.method == 'OPTIONS':
-        response = make_response()
-        origin = request.headers.get('Origin')
-        if origin in ALLOWED_ORIGINS:
-            response.headers['Access-Control-Allow-Origin'] = origin
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
-            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept, Origin'
-            response.headers['Access-Control-Max-Age'] = '86400'
-        return response
+# Explicit OPTIONS handler for preflight requests
+@app.route('/api/chat', methods=['OPTIONS'])
+def handle_preflight():
+    response = make_response()
+    origin = request.headers.get('Origin')
+    if origin in ALLOWED_ORIGINS:
+        response.headers.update({
+            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Max-Age': '86400'
+        })
+    return response
 
+# Updated chat endpoint with explicit CORS handling
+@app.route('/api/chat', methods=['POST'])
+def chat():
     try:
         data = request.json
         result = embedding_tool.jsonify_chat(data, conversation_history)
         response = make_response(result)
+        origin = request.headers.get('Origin')
+        if origin in ALLOWED_ORIGINS:
+            response.headers.update({
+                'Access-Control-Allow-Origin': origin,
+                'Access-Control-Allow-Credentials': 'true'
+            })
         return response
     except Exception as e:
         logger.error(f"Chat error: {str(e)}")
@@ -180,7 +161,7 @@ def chat():
         error_response.status_code = 500
         return error_response
 
-# Socket.IO event handlers with error handling
+# Socket event handlers
 @socketio.on('connect')
 def handle_connect():
     logger.info(f"Client connected: {request.sid}")
@@ -215,6 +196,16 @@ def error_handler(e):
 def default_error_handler(e):
     logger.error(f"SocketIO default error: {e}")
     return {"error": str(e)}
+
+# Error handling
+@app.errorhandler(Exception)
+def handle_error(error):
+    logger.error(f"An error occurred: {error}")
+    response = jsonify({
+        "error": str(error),
+        "message": "An internal error occurred"
+    })
+    return response, 500
 
 if __name__ == '__main__':
     if config.Config.production:

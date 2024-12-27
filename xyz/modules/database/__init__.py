@@ -1,7 +1,7 @@
 from flask import Flask
 from config import Config
-import xyz.database.database as db
-import xyz.database.models as models
+import xyz.modules.database.database as db
+import xyz.modules.database.models as models
 
 
 def create_app(config_class=Config):

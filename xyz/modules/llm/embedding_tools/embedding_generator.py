@@ -4,15 +4,13 @@ import docx
 from PyPDF2 import PdfReader
 import re
 import pandas as pd
-from scipy import spatial
-import ast
-import tiktoken
+
 import markdown
 from bs4 import BeautifulSoup
 import tiktoken
 import openai
 import config
-from xyz.embedding_model import embedding_model, create_embedding_df, read_embedding
+from xyz.modules.llm.embedding_tools.embedding_model import embedding_model, create_embedding_df, read_embedding
 
 log = config.log
 OAI = config.OAI
@@ -258,7 +256,7 @@ def create_embeddings_of_text(target, name):
                                          f'./embeddings/{name}.csv')
 
 
-def chat_completion_with_embeddings(user_input: str, df: pd.DataFrame, conversation_id: str,
+def chat_completion_with_embeddings(conversation_history, user_input: str, df: pd.DataFrame, conversation_id: str,
                                     system_input: str = "You are a data scientist named Alex Bauer who is presenting "
                                                         "his projects online in order to get a professional job.",
                                     model: str = "gpt-4o", streaming: bool = False,
@@ -285,7 +283,7 @@ def chat_completion_with_embeddings(user_input: str, df: pd.DataFrame, conversat
     logger.debug(f"Messages sent to API: {messages}")
 
     try:
-        completion = openai_client.chat.completions.create(
+        completion = OAI.client.chat.completions.create(
             model=model,
             messages=messages,
             stream=streaming,
