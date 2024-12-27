@@ -125,8 +125,8 @@ def query_message(
         token_budget: int = 3000
 ) -> str:
     """Return a message for GPT, with relevant source texts pulled from a dataframe."""
-    if df.empty:
-        return "DataFrame is empty. Cannot generate message."
+
+
 
     strings, relatednesses = strings_ranked_by_relatedness(query, df)
     introduction = 'Use the Documents provided below to answer the users questions. '
