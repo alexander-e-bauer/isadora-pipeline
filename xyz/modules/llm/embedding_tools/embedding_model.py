@@ -13,17 +13,27 @@ embedding_model = OAI.embedding3
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
+
 def read_embedding(embedding_path='xyz/modules/llm/embedding_tools/embeddings/code_metadata.csv'):
-    return pd.read_csv(
-        embedding_path,
-        index_col=0,
-        converters={
-            'embedding': lambda x: ast.literal_eval(x)
-        }
-    )
+    try:
+        df = pd.read_csv(
+            embedding_path,
+            converters={
+                'embedding': lambda x: ast.literal_eval(x)
+            }
+        )
+        # Ensure required columns exist
+        required_columns = ['text', 'embedding']
+        for col in required_columns:
+            if col not in df.columns:
+                raise KeyError(f"Required column '{col}' not found in the CSV file")
+        return df
+    except Exception as e:
+        print(f"Error reading embedding file: {str(e)}")
+        # Return empty DataFrame with required columns
+        return pd.DataFrame(columns=['text', 'embedding'])
 
 
-# search function
 def strings_ranked_by_relatedness(
         query: str,
         df: pd.DataFrame,
@@ -31,19 +41,27 @@ def strings_ranked_by_relatedness(
         top_n: int = 100
 ) -> tuple[list[str], list[float]]:
     """Returns a list of strings and relatednesses, sorted from most related to least."""
+    # Check if DataFrame is empty or missing required columns
+    if df.empty or 'text' not in df.columns or 'embedding' not in df.columns:
+        return [], []
 
     query_embedding_response = config.openai_client.embeddings.create(
         model=embedding_model,
         input=query,
     )
     query_embedding = query_embedding_response.data[0].embedding
-    strings_and_relatednesses = [
-        (row["text"], relatedness_fn(query_embedding, row["embedding"]))
-        for i, row in df.iterrows()
-    ]
-    strings_and_relatednesses.sort(key=lambda x: x[1], reverse=True)
-    strings, relatednesses = zip(*strings_and_relatednesses) if strings_and_relatednesses else ([], [])
-    return strings[:top_n], relatednesses[:top_n]
+
+    try:
+        strings_and_relatednesses = [
+            (str(row['text']), relatedness_fn(query_embedding, row['embedding']))
+            for _, row in df.iterrows()
+        ]
+        strings_and_relatednesses.sort(key=lambda x: x[1], reverse=True)
+        strings, relatednesses = zip(*strings_and_relatednesses) if strings_and_relatednesses else ([], [])
+        return strings[:top_n], relatednesses[:top_n]
+    except Exception as e:
+        print(f"Error in strings_ranked_by_relatedness: {str(e)}")
+        return [], []
 
 
 def relatedness_score(text, _df):

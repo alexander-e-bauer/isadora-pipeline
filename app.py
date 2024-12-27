@@ -104,19 +104,7 @@ app.config.update(
 )
 
 
-# Verify API key is properly configured
-def verify_api_key():
-    try:
-        config.openai_client.models.list()
-        print("API key verification successful")
-        return True
-    except Exception as e:
-        print(f"API key verification failed: {e}")
-        return False
-
-verify_api_key()
-df = read_embedding()
-
+df = embedding_tool.read_code()
 
 # Debug logging
 @app.before_request

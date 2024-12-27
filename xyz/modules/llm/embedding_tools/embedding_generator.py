@@ -319,8 +319,9 @@ def chat_completion_with_embeddings(conversation_history, user_input: str, df: p
 def run(update=False):
     if update:
         create_embeddings_of_self()
-    else:
-        df = read_embedding()
+
+    df = read_embedding()
+    return df
 
 
 def save_embeddings(directory, output_path):
