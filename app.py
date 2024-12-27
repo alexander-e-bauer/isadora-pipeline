@@ -168,7 +168,7 @@ def handle_connect():
     emit('connect', {'status': 'connected', 'sid': request.sid})
 
 @socketio.on('disconnect')
-def handle_disconnect():
+def handle_disconnect(data=None):
     logger.info(f"Client disconnected: {request.sid}")
 
 @socketio.on('typing')

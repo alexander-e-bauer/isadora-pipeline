@@ -31,9 +31,6 @@ def strings_ranked_by_relatedness(
         top_n: int = 100
 ) -> tuple[list[str], list[float]]:
     """Returns a list of strings and relatednesses, sorted from most related to least."""
-    if df.empty:
-        log("DataFrame is empty. Cannot compute relatedness.")
-        return [], []
 
     query_embedding_response = OAI.client.embeddings.create(
         model=embedding_model,
