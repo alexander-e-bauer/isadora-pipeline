@@ -31,6 +31,9 @@ def strings_ranked_by_relatedness(
         top_n: int = 100
 ) -> tuple[list[str], list[float]]:
     """Returns a list of strings and relatednesses, sorted from most related to least."""
+    if df.empty:
+        log("DataFrame is empty. Cannot compute relatedness.")
+        return [], []
 
     query_embedding_response = OAI.client.embeddings.create(
         model=embedding_model,
@@ -122,8 +125,8 @@ def query_message(
         token_budget: int = 3000
 ) -> str:
     """Return a message for GPT, with relevant source texts pulled from a dataframe."""
-
-
+    if df.empty:
+        return "DataFrame is empty. Cannot generate message."
 
     strings, relatednesses = strings_ranked_by_relatedness(query, df)
     introduction = 'Use the Documents provided below to answer the users questions. '
