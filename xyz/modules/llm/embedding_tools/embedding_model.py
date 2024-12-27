@@ -1,184 +1,118 @@
 import re
 import pandas as pd
-import numpy as np
 from scipy import spatial
 import ast
 import tiktoken
-from typing import List, Tuple, Optional, Union
-import config
 
+import config
 log = config.log
-logger = config.logger
 OAI = config.OAI
 
 embedding_model = OAI.embedding3
-
 # Set display options to show all columns and rows
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
-
-def read_embedding(embedding_path: str = "xyz/modules/llm/embedding_tools/embeddings/code_metadata.csv") -> pd.DataFrame:
-    """
-    Read embeddings from a CSV file.
-
-    Args:
-        embedding_path: Path to the CSV file
-
-    Returns:
-        pd.DataFrame: DataFrame containing embeddings
-    """
-    try:
-        df = pd.read_csv(
-            embedding_path,
-            index_col=0,
-            converters={
-                'embedding': lambda x: ast.literal_eval(x)
-            }
-        )
-        logger.debug(f"Successfully read embeddings from {embedding_path}")
-        return df
-    except Exception as e:
-        logger.error(f"Error reading embeddings: {str(e)}", exc_info=True)
-        raise
+def read_embedding(embedding_path):
+    return pd.read_csv(
+        embedding_path,
+        index_col=0,
+        converters={
+            'embedding': lambda x: ast.literal_eval(x)
+        }
+    )
 
 
+# search function
 def strings_ranked_by_relatedness(
         query: str,
         df: pd.DataFrame,
         relatedness_fn=lambda x, y: 1 - spatial.distance.cosine(x, y),
         top_n: int = 100
-) -> Tuple[List[str], List[float]]:
-    """
-    Returns a list of strings and relatednesses, sorted from most related to least.
+) -> tuple[list[str], list[float]]:
+    """Returns a list of strings and relatednesses, sorted from most related to least."""
 
-    Args:
-        query: Query string to compare against
-        df: DataFrame containing embeddings
-        relatedness_fn: Function to compute relatedness
-        top_n: Number of top results to return
+    query_embedding_response = OAI.client.embeddings.create(
+        model=embedding_model,
+        input=query,
+    )
+    query_embedding = query_embedding_response.data[0].embedding
+    strings_and_relatednesses = [
+        (row["text"], relatedness_fn(query_embedding, row["embedding"]))
+        for i, row in df.iterrows()
+    ]
+    strings_and_relatednesses.sort(key=lambda x: x[1], reverse=True)
+    strings, relatednesses = zip(*strings_and_relatednesses) if strings_and_relatednesses else ([], [])
+    return strings[:top_n], relatednesses[:top_n]
 
-    Returns:
-        Tuple[List[str], List[float]]: Lists of strings and their relatedness scores
-    """
-    try:
-        query_embedding_response = OAI.client.embeddings.create(
-            model=embedding_model,
-            input=query,
-        )
-        query_embedding = query_embedding_response.data[0].embedding
 
-        strings_and_relatednesses = [
-            (row["text"], relatedness_fn(query_embedding, row["embedding"]))
-            for i, row in df.iterrows()
-        ]
-        strings_and_relatednesses.sort(key=lambda x: x[1], reverse=True)
-        strings, relatednesses = zip(*strings_and_relatednesses) if strings_and_relatednesses else ([], [])
-        return list(strings[:top_n]), list(relatednesses[:top_n])
-    except Exception as e:
-        logger.error(f"Error in strings_ranked_by_relatedness: {str(e)}", exc_info=True)
-        raise
+def relatedness_score(text, _df):
+    # examples
+    strings, relatednesses = strings_ranked_by_relatedness(text, _df, top_n=3)
+    for string, relatedness in zip(strings, relatednesses):
+        print(f"\n Relatedness: {relatedness=:.3f}\n")
+        print(string)
+        print()
 
 
 def remove_stuff(text: str) -> str:
-    """
-    Clean text by removing unnecessary characters while preserving URLs.
+    """Remove punctuation (except in URLs), newline, tab characters, and large spaces."""
+    # Pattern to identify URLs
+    url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+    # Find all URLs using the pattern
+    urls = re.findall(url_pattern, text)
+    # Replace URLs with a placeholder to avoid altering them
+    placeholder = "URL_PLACEHOLDER"
+    for url in urls:
+        text = text.replace(url, placeholder)
 
-    Args:
-        text: Text to clean
+    # Remove large spaces (5 or more spaces)
+    text = re.sub(r' {5,}', ' ', text)
 
-    Returns:
-        str: Cleaned text
-    """
-    try:
-        # Pattern to identify URLs
-        url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
-        urls = re.findall(url_pattern, text)
+    # Restore URLs from placeholders
+    for url in urls:
+        text = text.replace(placeholder, url, 1)
 
-        # Replace URLs with a placeholder
-        placeholder = "URL_PLACEHOLDER"
-        for url in urls:
-            text = text.replace(url, placeholder)
-
-        # Remove large spaces and normalize whitespace
-        text = re.sub(r'\s+', ' ', text)
-        text = text.strip()
-
-        # Restore URLs
-        for url in urls:
-            text = text.replace(placeholder, url, 1)
-
-        return text
-    except Exception as e:
-        logger.error(f"Error in remove_stuff: {str(e)}", exc_info=True)
-        return text
+    return text
 
 
-def get_embedding(text_to_embed: str) -> List[float]:
-    """
-    Get embedding for a text string.
+def get_embedding(text_to_embed):
+    text_to_embed = remove_stuff(text_to_embed)
+    # Embed a line of text
+    response = OAI.client.embeddings.create(
+        model=embedding_model,
+        input=[text_to_embed]
+    )
+    # Extract the AI output embedding as a list of floats
+    embedding = response.data[0].embedding
+    print(f"---\nEmbedding: {embedding} \nText: {text_to_embed}")
 
-    Args:
-        text_to_embed: Text to get embedding for
-
-    Returns:
-        List[float]: Embedding vector
-    """
-    try:
-        text_to_embed = remove_stuff(text_to_embed)
-        response = OAI.client.embeddings.create(
-            model=embedding_model,
-            input=[text_to_embed]
-        )
-        embedding = response.data[0].embedding
-        logger.debug(f"Generated embedding for text: {text_to_embed[:100]}...")
-        return embedding
-    except Exception as e:
-        logger.error(f"Error getting embedding: {str(e)}", exc_info=True)
-        raise
+    return embedding
 
 
-def create_embedding_df(excel_path: str, embedding_path: str) -> None:
-    """
-    Create embeddings DataFrame from Excel file and save to CSV.
+def create_embedding_df(excel_path, embedding_path):
+    # Create a new DataFrame to store the text and its embedding
+    _df = pd.DataFrame()
 
-    Args:
-        excel_path: Path to input Excel file
-        embedding_path: Path to save embeddings CSV
-    """
-    try:
-        df = pd.DataFrame()
-        review_df = pd.read_excel(excel_path, header=None)
+    # Read the Excel file and set row 0 as the header
+    review_df = pd.read_excel(excel_path, header=None)
 
-        df['text'] = review_df.apply(lambda x: ' '.join(x.dropna().astype(str)), axis=1)
-        df.reset_index(drop=True, inplace=True)
+    # Now concatenate all the text in each row into a single cell in a new column called 'text'
+    _df['text'] = review_df.apply(lambda x: ' '.join(x.dropna().astype(str)), axis=1)
+    _df.reset_index(drop=True, inplace=True)
+    # Display the DataFrame with the concatenated column
+    print(_df.head())
+    # _df = _df.sample(10)
+    _df["embedding"] = _df["text"].astype(str).apply(get_embedding)
+    print(_df.head())
 
-        df["embedding"] = df["text"].astype(str).apply(get_embedding)
-
-        df.to_csv(embedding_path, index=False)
-        logger.info(f"Successfully created embeddings and saved to {embedding_path}")
-    except Exception as e:
-        logger.error(f"Error creating embedding DataFrame: {str(e)}", exc_info=True)
-        raise
+    _df.to_csv(embedding_path, index=False)
 
 
 def num_tokens(text: str, model: str = OAI.gpt4o) -> int:
-    """
-    Count the number of tokens in a string.
-
-    Args:
-        text: Text to count tokens for
-        model: Model to use for tokenization
-
-    Returns:
-        int: Number of tokens
-    """
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-        return len(encoding.encode(text))
-    except Exception as e:
-        logger.error(f"Error counting tokens: {str(e)}", exc_info=True)
-        return 0
+    """Return the number of tokens in a string."""
+    encoding = tiktoken.encoding_for_model(model)
+    return len(encoding.encode(text))
 
 
 def query_message(
@@ -187,35 +121,24 @@ def query_message(
         model: str = OAI.gpt4o,
         token_budget: int = 3000
 ) -> str:
-    """
-    Create a message for GPT with relevant context from the DataFrame.
+    """Return a message for GPT, with relevant source texts pulled from a dataframe."""
 
-    Args:
-        query: User query
-        df: DataFrame containing embeddings
-        model: Model to use
-        token_budget: Maximum tokens to use
 
-    Returns:
-        str: Formatted message with context
-    """
-    try:
-        strings, relatednesses = strings_ranked_by_relatedness(query, df)
 
-        introduction = 'Use the Documents provided below to answer the questions. '
-        question = f"\n\nTask: {query}"
-        message = introduction
-
-        for string in strings:
-            next_article = f'\n\nOriginal Code File:\n"""\n{string}\n"""'
-            if num_tokens(message + next_article + question, model=model) > token_budget:
-                break
+    strings, relatednesses = strings_ranked_by_relatedness(query, df)
+    introduction = 'Use the Documents provided below to answer the users questions. '
+    question = f"\n\nTask: {query}"
+    message = introduction
+    for string in strings:
+        next_article = f'\n\nOriginal Code File:\n"""\n{string}\n"""'
+        if (
+                num_tokens(message + next_article + question, model=model)
+                > token_budget
+        ):
+            break
+        else:
             message += next_article
-
-        return message + question
-    except Exception as e:
-        logger.error(f"Error creating query message: {str(e)}", exc_info=True)
-        raise
+    return message + question
 
 
 def query_message_code(
@@ -224,143 +147,86 @@ def query_message_code(
         model: str = OAI.gpt4o,
         token_budget: int = 3000
 ) -> str:
-    """
-    Create a code-specific message for GPT with relevant context.
+    """Return a message for GPT, with relevant source texts pulled from a dataframe."""
+    if df.empty:
+        return "DataFrame is empty. Cannot generate message."
 
-    Args:
-        query: User query
-        df: DataFrame containing embeddings
-        model: Model to use
-        token_budget: Maximum tokens to use
-
-    Returns:
-        str: Formatted message with context
-    """
-    try:
-        if df.empty:
-            return "DataFrame is empty. Cannot generate message."
-
-        strings, relatednesses = strings_ranked_by_relatedness(query, df)
-
-        introduction = (
-            'Use the Original Code Files provided below to answer the questions about the code. '
-            'Based on the input, Generate one single code that implements an improvement '
-            'upon the original code. Ensure compatibility with the original code. '
-            'Respond only with the code, no additional information.'
-        )
-
-        question = f"\n\nTask: {query}"
-        message = introduction
-
-        for string in strings:
-            next_article = f'\n\nOriginal Code File:\n"""\n{string}\n"""'
-            if num_tokens(message + next_article + question, model=model) > token_budget:
-                break
+    strings, relatednesses = strings_ranked_by_relatedness(query, df)
+    introduction = 'Use the Original Code Files provided below to answer the users questions about the code. ' \
+                   'Based on the users input, Generate one single code that ' \
+                   'implements an improvement upon the original code' \
+                   'take into account the users input and the original code. ' \
+                   'take care to ensure that the code is compatable with the original code. ' \
+                   'Respond only with the code, do not include any additional information.'
+    question = f"\n\nTask: {query}"
+    message = introduction
+    for string in strings:
+        next_article = f'\n\nOriginal Code File:\n"""\n{string}\n"""'
+        if (
+                num_tokens(message + next_article + question, model=model)
+                > token_budget
+        ):
+            break
+        else:
             message += next_article
-
-        return message + question
-    except Exception as e:
-        logger.error(f"Error creating code query message: {str(e)}", exc_info=True)
-        raise
+    return message + question
 
 
 def ask(
         query: str,
         df: pd.DataFrame,
-        conversation_id: str,
+        conversation_id,
         model: str = OAI.gpt4o,
         print_message: bool = False,
 ) -> str:
-    """
-    Answers a query using GPT and a dataframe of relevant texts and embeddings.
-
-    Args:
-        query: User query
-        df: DataFrame containing embeddings
-        conversation_id: ID for the conversation
-        model: Model to use
-        print_message: Whether to print debug messages
-
-    Returns:
-        str: Response from the model
-    """
-    try:
-        message = query_message(query, df, model=model)
-        if print_message:
-            logger.debug(f"Generated message: {message[:200]}...")
-
-        messages = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": message},
-        ]
-
-        response = OAI.client.chat.completions.create(
-            model=model,
-            messages=messages,
-            conversation_id=conversation_id,
-            temperature=1.9
-        )
-
-        response_message = response.choices[0].message.content
-        return response_message
-    except Exception as e:
-        logger.error(f"Error in ask function: {str(e)}", exc_info=True)
-        raise
+    """Answers a query using GPT and a dataframe of relevant texts and embeddings."""
+    message = query_message(query, df, model=model)
+    if print_message:
+        print(message)
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": message},
+    ]
+    response = OAI.client.chat.completions.create(
+        model=model,
+        messages=messages,
+        conversation_id=conversation_id,
+        temperature=1.9
+    )
+    response_message = response.choices[0].message.content
+    return response_message
 
 
 def ask_familiar(
         query: str,
         df: pd.DataFrame,
-        conversation_id: str,
+        conversation_id,
         model: str = OAI.gpt4o,
         print_message: bool = False,
 ) -> str:
-    """
-    Answers a query using GPT with a more familiar tone.
-
-    Args:
-        query: User query
-        df: DataFrame containing embeddings
-        conversation_id: ID for the conversation
-        model: Model to use
-        print_message: Whether to print debug messages
-
-    Returns:
-        str: Response from the model
-    """
-    try:
-        message = query_message(query, df, model=model)
-        if print_message:
-            logger.debug(f"Generated message: {message[:200]}...")
-
-        system_content = (
-            "You are a helpful assistant who is trying to get the person whose resume and work "
-            "is represented in the provided documents a job as a data scientist or web developer. "
-            "You respond in a professional, witty, and honest manner and "
-            "provide specific examples whenever possible. Speak in a general manner, as you "
-            "are open to many opportunities, not just one specific position, and could be "
-            "contacted by anybody including potential employers. Don't respond with too many "
-            "words, don't use verbose grammar, and don't oversell yourself. Don't give out "
-            "too much information without being prompted to do so."
-        )
-
-        messages = [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": message},
-        ]
-
-        response = OAI.client.chat.completions.create(
-            model=model,
-            messages=messages,
-            conversation_id=conversation_id,
-            temperature=0
-        )
-
-        response_message = response.choices[0].message.content
-        return response_message
-    except Exception as e:
-        logger.error(f"Error in ask_familiar function: {str(e)}", exc_info=True)
-        raise
+    """Answers a query using GPT and a dataframe of relevant texts and embeddings."""
+    message = query_message(query, df, model=model)
+    if print_message:
+        print(message)
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant who is trying to get the person whose resume and work "
+                                      "is represented in the provided documents a job as a data scientist or web developer. "
+                                      "You respond in a professional, witty, and honest manner and "
+                                      "provide specific examples whenever possible. Speak in a general manner, as you "
+                                      "are open to many opportunities, not just one specific position, and could be "
+                                      "contacted by anybody including potential employers. Don't respond with to many "
+                                      "words, dont use  verbose grammar, and dont oversell yourself. Don't give out "
+                                      "too much information without being prompted to do so."},
+        {"role": "user", "content": message},
+    ]
+    response = OAI.client.chat.completions.create(
+        model=model,
+        messages=messages,
+        conversation_id=conversation_id,
+        temperature=0
+    )
+    response_message = response.choices[0].message.content
+    return response_message
 
 
 def ask_code(
@@ -369,41 +235,21 @@ def ask_code(
         model: str = OAI.gpt4o,
         print_message: bool = False,
 ) -> str:
-    """
-    Answers a code-related query using GPT.
+    """Answers a query using GPT and a dataframe of relevant texts and embeddings."""
+    message = query_message_code(query, df, model=model)
+    if print_message:
+        print(message)
+    messages = [
+        {"role": "system", "content": "You Complete the users python, javascript, css, and html code "
+                                      "and fully Implement New Code if possible"},
+        {"role": "user", "content": message},
+    ]
+    response = OAI.client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=0
+    )
+    response_message = response.choices[0].message.content
+    return response_message
 
-    Args:
-        query: User query
-        df: DataFrame containing embeddings
-        model: Model to use
-        print_message: Whether to print debug messages
 
-    Returns:
-        str: Response from the model
-    """
-    try:
-        message = query_message_code(query, df, model=model)
-        if print_message:
-            logger.debug(f"Generated message: {message[:200]}...")
-
-        messages = [
-            {
-                "role": "system",
-                "content": "You Complete the users python, javascript, css, and html code "
-                           "and fully Implement New Code if possible"
-            },
-            {"role": "user", "content": message},
-        ]
-
-        response = OAI.client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.7,
-            max_tokens=2000
-        )
-
-        response_message = response.choices[0].message.content
-        return response_message
-    except Exception as e:
-        logger.error(f"Error in ask_code function: {str(e)}", exc_info=True)
-        raise
