@@ -58,3 +58,4 @@ class OAI:
 
 openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 OAI.client = openai_client
+

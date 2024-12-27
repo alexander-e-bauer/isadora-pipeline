@@ -7,6 +7,8 @@ from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import eventlet
 
+from xyz.modules.llm.embedding_tools.embedding_model import read_embedding
+
 eventlet.monkey_patch(thread=False)
 sys.setrecursionlimit(3000)
 
@@ -102,6 +104,20 @@ app.config.update(
 )
 
 
+# Verify API key is properly configured
+def verify_api_key():
+    try:
+        config.openai_client.models.list()
+        print("API key verification successful")
+        return True
+    except Exception as e:
+        print(f"API key verification failed: {e}")
+        return False
+
+verify_api_key()
+df = read_embedding()
+
+
 # Debug logging
 @app.before_request
 def log_request_info():
@@ -143,7 +159,7 @@ def handle_preflight():
 def chat():
     try:
         data = request.json
-        result = embedding_tool.jsonify_chat(data, conversation_history)
+        result = embedding_tool.jsonify_chat(data, conversation_history=conversation_history, df=df)
         response = make_response(result)
         origin = request.headers.get('Origin')
         if origin in ALLOWED_ORIGINS:

@@ -13,7 +13,7 @@ embedding_model = OAI.embedding3
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
-def read_embedding(embedding_path):
+def read_embedding(embedding_path='xyz/modules/llm/embedding_tools/embeddings/code_metadata.csv'):
     return pd.read_csv(
         embedding_path,
         index_col=0,
@@ -31,11 +31,8 @@ def strings_ranked_by_relatedness(
         top_n: int = 100
 ) -> tuple[list[str], list[float]]:
     """Returns a list of strings and relatednesses, sorted from most related to least."""
-    if df.empty:
-        log("DataFrame is empty. Cannot compute relatedness.")
-        return [], []
 
-    query_embedding_response = OAI.client.embeddings.create(
+    query_embedding_response = config.openai_client.embeddings.create(
         model=embedding_model,
         input=query,
     )
@@ -125,8 +122,8 @@ def query_message(
         token_budget: int = 3000
 ) -> str:
     """Return a message for GPT, with relevant source texts pulled from a dataframe."""
-    if df.empty:
-        return "DataFrame is empty. Cannot generate message."
+
+
 
     strings, relatednesses = strings_ranked_by_relatedness(query, df)
     introduction = 'Use the Documents provided below to answer the users questions. '
