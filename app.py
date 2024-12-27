@@ -56,8 +56,8 @@ CORS(app, resources={
             "http://localhost:3000",  # React development server
             "http://localhost:5000",  # Flask development server
             "http://localhost:6379",  # Flask development server
-            "https://chat-widget-app-8c3cca0ff3c0.herokuapp.com",  # Production URL
-            "https://alexander-e-bauer.github.io"  # Add your frontend domain
+            "https://isadora-v2-74e5a1b97f07.herokuapp.com",  # Production URL
+            "https://isadora-f5fbebf38bc6.herokuapp.com"  # Frontend domain
         ],
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"]
@@ -69,8 +69,8 @@ CORS(app, resources={
 socketio = SocketIO(app, cors_allowed_origins=[
     "http://localhost:3000",
     "http://localhost:5000",
-    "https://chat-widget-app-8c3cca0ff3c0.herokuapp.com",
-    "https://alexander-e-bauer.github.io"], async_mode='eventlet'
+    "https://isadora-v2-74e5a1b97f07.herokuapp.com",
+    "https://isadora-f5fbebf38bc6.herokuapp.com"], async_mode='eventlet'
 )
 
 app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY")
