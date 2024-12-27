@@ -14,7 +14,7 @@ from flask_bootstrap import Bootstrap
 from flask_wtf.csrf import CSRFProtect
 import eventlet
 
-eventlet.monkey_patch(thread=False)  # Add thread=False to help with recursion issues
+eventlet.monkey_patch(thread=False)
 sys.setrecursionlimit(3000)
 
 from xyz.modules.gateway import gateway_blueprint
@@ -23,9 +23,6 @@ from xyz.modules.database import database, models
 import config
 OAI = config.OAI
 logger = config.logger
-
-# Increase recursion limit and configure SSL
-sys.setrecursionlimit(3000)
 
 # SSL Configuration
 def create_ssl_context():
@@ -47,9 +44,9 @@ conversation_history = {}
 
 app = Flask(__name__)
 
-# Configure CORS - Moved to top and expanded configuration
+# Updated CORS Configuration
 CORS(app, resources={
-    r"/*": {  # Changed from r"/api/*" to r"/*"
+    r"/*": {
         "origins": [
             "http://localhost:3000",
             "http://localhost:5000",
@@ -60,11 +57,12 @@ CORS(app, resources={
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
         "expose_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True
+        "supports_credentials": True,
+        "send_wildcard": False
     }
 })
 
-# Configure SocketIO with expanded CORS settings
+# Updated SocketIO Configuration
 socketio = SocketIO(
     app,
     cors_allowed_origins=[
@@ -76,7 +74,10 @@ socketio = SocketIO(
     async_mode='eventlet',
     ping_timeout=30,
     ping_interval=15,
-    always_connect=True
+    always_connect=True,
+    path='/socket.io',
+    transport=['websocket', 'polling'],
+    cookie=False
 )
 
 # Flask configuration
@@ -149,20 +150,41 @@ def handle_typing(data):
 def handle_stop_typing(data):
     emit('stop_typing', data, broadcast=True, include_self=False)
 
-# Routes with updated CORS handling
+# New Socket.IO error handlers
+@socketio.on_error()
+def error_handler(e):
+    logger.error(f"SocketIO error: {e}")
+    return {"error": str(e)}
+
+@socketio.on_error_default
+def default_error_handler(e):
+    logger.error(f"SocketIO default error: {e}")
+    return {"error": str(e)}
+
+@socketio.on('connect')
+def handle_connect():
+    logger.info(f"Client connected: {request.sid}")
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    logger.info(f"Client disconnected: {request.sid}")
+
+# Updated Routes with CORS handling
 @app.route('/api/chat', methods=['POST', 'OPTIONS'])
 def chat():
     if request.method == 'OPTIONS':
         response = make_response()
-        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
         response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response
 
     data = request.json
     result = embedding_tool.jsonify_chat(data, conversation_history)
     response = make_response(result)
-    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Origin', request.headers.get('Origin', '*'))
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
     return response
 
 @app.route('/', methods=['GET'])
@@ -189,7 +211,9 @@ if __name__ == '__main__':
             host='0.0.0.0',
             port=int(os.environ.get('PORT', 5000)),
             debug=False,
-            use_reloader=False
+            use_reloader=False,
+            cors_allowed_origins='*',
+            allow_unsafe_werkzeug=True
         )
     else:
         socketio.run(
@@ -198,5 +222,5 @@ if __name__ == '__main__':
             port=5000,
             debug=True,
             ssl_context=ssl_context,
-            allow_unsafe_werkzeug=True
+            cors_allowed_origins='*'
         )
