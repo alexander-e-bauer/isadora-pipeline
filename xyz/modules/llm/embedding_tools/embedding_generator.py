@@ -280,7 +280,7 @@ def chat_completion_with_embeddings(conversation_history, user_input: str, df: p
                    {"role": "system", "content": system_input},
                ] + conversation_history[conversation_id]
 
-    logger.debug(f"Messages sent to API: {messages}")
+    log(f"Messages sent to API: {messages}")
 
     try:
         completion = OAI.client.chat.completions.create(
@@ -301,10 +301,10 @@ def chat_completion_with_embeddings(conversation_history, user_input: str, df: p
         # Append assistant's response to conversation history
         conversation_history[conversation_id].append({"role": "assistant", "content": output})
 
-        logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
+        log(f"Updated conversation history: {conversation_history[conversation_id]}")
         return output
     except Exception as e:
-        logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
+        log(f"Error in chat completion: {str(e)}")
         raise
 
 #df = read_embedding('embeddings/resume_test.csv')
@@ -328,6 +328,7 @@ def save_embeddings(directory, output_path):
     print(df.head())
     df.to_csv(output_path, index=False)
 
+run(True)
 
 #directory = "knowledge_sources/personal"
 #output_path = "embeddings/resume_test.csv"
