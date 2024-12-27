@@ -328,7 +328,6 @@ def save_embeddings(directory, output_path):
     print(df.head())
     df.to_csv(output_path, index=False)
 
-run(True)
 
 #directory = "knowledge_sources/personal"
 #output_path = "embeddings/resume_test.csv"
