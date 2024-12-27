@@ -21,7 +21,7 @@ def read_code(update: bool = False) -> pd.DataFrame:
     if update:
         embedding_generator.create_embeddings_of_self()
 
-    df = embedding_model.read_embedding('embeddings/code_metadata.csv')
+    df = embedding_model.read_embedding('embedding_tools/embeddings/code_metadata.csv')
     return df
 
 
