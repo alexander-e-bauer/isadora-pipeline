@@ -17,7 +17,7 @@ import eventlet
 eventlet.monkey_patch(thread=False)
 sys.setrecursionlimit(3000)
 
-from xyz.modules.gateway import gateway_blueprint
+#from xyz.modules.gateway import gateway_blueprint
 from xyz.modules.llm import llm_blueprint, embedding_tool
 from xyz.modules.database import database, models
 import config
@@ -48,11 +48,7 @@ app = Flask(__name__)
 CORS(app, resources={
     r"/*": {
         "origins": [
-            "http://localhost:3000",
-            "http://localhost:5000",
-            "http://localhost:6379",
-            "https://isadora-v2-74e5a1b97f07.herokuapp.com",
-            "https://isadora-f5fbebf38bc6.herokuapp.com"
+            "https://isadora-v2-74e5a1b97f07.herokuapp.com"
         ],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
@@ -127,7 +123,7 @@ csrf = CSRFProtect(app)
 Bootstrap(app)
 
 # Blueprints
-gw = gateway_blueprint.init_app(app)
+#gw = gateway_blueprint.init_app(app)
 oai = llm_blueprint.init_app(app)
 
 # Debug logging
