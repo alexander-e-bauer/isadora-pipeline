@@ -18,7 +18,7 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
 
 
-def read_embedding(embedding_path: str) -> pd.DataFrame:
+def read_embedding(embedding_path: str = "xyz/modules/llm/embedding_tools/embeddings/code_metadata.csv") -> pd.DataFrame:
     """
     Read embeddings from a CSV file.
 
