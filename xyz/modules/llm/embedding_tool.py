@@ -15,9 +15,25 @@ def read_code(update=False):
     return df
 
 
-def get_completion(prompt, persona="You are a helpful assistant."):
+def get_persona(function):
+    if function == "":
+        return "You are a helpful assistant."
+    elif function == "embedding":
+        return "You are a helpful assistant that uses embeddings to improve the accuracy of your responses."
+    elif function == "scrape":
+        return "You are a helpful assistant that scrapes websites to improve the accuracy of your responses."
+    elif function == "completion":
+        return "You are a helpful assistant that completes code to improve the accuracy of your responses."
+    elif function == "pirate":
+        return "You are a swashbuckling pirate than can only respond with the demeanor of such."
+    elif function == "shakespeare":
+        return "You are shakespeare the playwright and can only respond with the demeanor of such."
+
+
+
+def get_completion(prompt, persona="You are a helpful assistant.", model="gpt-4o"):
     completion = OAI.client.chat.completions.create(
-        model='gpt-4o',
+        model=model,
         messages=[
             {"role": "system",
              "content": f"{persona}"},
@@ -57,7 +73,7 @@ def chat_completion_with_embeddings(conversation_history, user_input: str, df: p
     logger.debug(f"Messages sent to API: {messages}")
 
     try:
-        output = get_completion(messages)
+        output = get_completion(messages, persona=system_input, model=model)
 
         # Append assistant's response to conversation history
         conversation_history[conversation_id].append({"role": "assistant", "content": output})
@@ -72,7 +88,8 @@ def chat_completion_with_embeddings(conversation_history, user_input: str, df: p
 def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
     message = data.get('message', '')
     conversation_id = data.get('conversationId', 'default')
-    model = data.get('model', '')
+    function = data.get('function', '')
+    persona = get_persona(function)
     logger.debug(f"Received chat request. Message: {message}, Conversation ID: {conversation_id}")
     logger.debug(f"Current conversation history: {conversation_history.get(conversation_id, [])}")
     try:
@@ -80,8 +97,8 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
                                                      conversation_id=conversation_id,
                                                      df=df,
                                                      conversation_history=conversation_history,
-                                                     model=model,
-                                                     print_message=True)
+                                                     print_message=True,
+                                                     system_input=persona)
         response = f"{completion}"
         logger.debug(f"Sending response: {response}")
         logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
