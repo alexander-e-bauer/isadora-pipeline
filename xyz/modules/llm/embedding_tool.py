@@ -31,8 +31,7 @@ def get_completion(prompt, persona="You are a helpful assistant."):
 
 
 def chat_completion_with_embeddings(conversation_history, user_input: str, df: pd.DataFrame, conversation_id: str,
-                                    system_input: str = "You are a data scientist named Alex Bauer who is presenting "
-                                                        "his projects online in order to get a professional job.",
+                                    system_input: str,
                                     model: str = "gpt-4o", streaming: bool = False,
                                     print_message: bool = False) -> str:
 

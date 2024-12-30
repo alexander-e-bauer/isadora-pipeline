@@ -7,6 +7,8 @@ import pandas as pd
 
 import markdown
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse
+import requests
 import tiktoken
 import openai
 import config
@@ -199,6 +201,62 @@ def read_text_from_file(file_path):
         file_content = file.read()
     return file_content
 
+
+def scrape_website(url):
+    """Scrapes text content from a website URL."""
+    try:
+        # Add headers to mimic a browser request
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+
+        response = requests.get(url, headers=headers, verify=False, timeout=10)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Remove script and style elements
+        for script in soup(['script', 'style', 'meta', 'link']):
+            script.decompose()
+
+        # Get text content
+        text = soup.get_text(separator=' ', strip=True)
+
+        # Clean up the text
+        text = remove_stuff(text)
+
+        return {
+            'url': url,
+            'domain': urlparse(url).netloc,
+            'text': text
+        }
+    except Exception as e:
+        log(f"Error scraping website {url}: {str(e)}")
+        return None
+
+
+def create_website_embeddings(urls):
+    """Creates embeddings from a list of website URLs."""
+    df = pd.DataFrame(columns=['url', 'domain', 'text', 'embedding'])
+
+    for url in urls:
+        content = scrape_website(url)
+        if content:
+            try:
+                embedding = get_embedding(content['text'])
+                df = df._append({
+                    'url': content['url'],
+                    'domain': content['domain'],
+                    'text': content['text'],
+                    'embedding': embedding
+                }, ignore_index=True)
+            except Exception as e:
+                log(f"Error creating embedding for {url}: {str(e)}")
+                continue
+
+    return df
+
+
 source_code = ''
 
 
@@ -257,8 +315,7 @@ def create_embeddings_of_text(target, name):
 
 
 def chat_completion_with_embeddings(conversation_history, user_input: str, df: pd.DataFrame, conversation_id: str,
-                                    system_input: str = "You are a data scientist named Alex Bauer who is presenting "
-                                                        "his projects online in order to get a professional job.",
+                                    system_input: str = "You are a helpful assistant.",
                                     model: str = "gpt-4o", streaming: bool = False,
                                     print_message: bool = False) -> str:
     """
