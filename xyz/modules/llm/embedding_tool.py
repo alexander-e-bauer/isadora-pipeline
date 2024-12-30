@@ -31,7 +31,7 @@ def get_completion(prompt, persona="You are a helpful assistant."):
 
 
 def chat_completion_with_embeddings(conversation_history, user_input: str, df: pd.DataFrame, conversation_id: str,
-                                    system_input: str,
+                                    system_input: str = 'You are a helpful assistant.',
                                     model: str = "gpt-4o", streaming: bool = False,
                                     print_message: bool = False) -> str:
 
@@ -72,13 +72,16 @@ def chat_completion_with_embeddings(conversation_history, user_input: str, df: p
 def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
     message = data.get('message', '')
     conversation_id = data.get('conversationId', 'default')
+    model = data.get('model', '')
     logger.debug(f"Received chat request. Message: {message}, Conversation ID: {conversation_id}")
     logger.debug(f"Current conversation history: {conversation_history.get(conversation_id, [])}")
     try:
         completion = chat_completion_with_embeddings(user_input=message,
                                                      conversation_id=conversation_id,
                                                      df=df,
-                                                     conversation_history=conversation_history)
+                                                     conversation_history=conversation_history,
+                                                     model=model,
+                                                     print_message=True)
         response = f"{completion}"
         logger.debug(f"Sending response: {response}")
         logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")

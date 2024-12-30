@@ -142,7 +142,7 @@ def handle_preflight():
         })
     return response
 
-# Updated chat endpoint with explicit CORS handling
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
