@@ -16,7 +16,7 @@ def read_code(update=False):
 
 
 def get_persona(function):
-    if function == "":
+    if function == "isadora":
         return "You are a helpful assistant."
     elif function == "embedding":
         return "You are a helpful assistant that uses embeddings to improve the accuracy of your responses."
