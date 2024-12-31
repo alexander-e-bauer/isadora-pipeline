@@ -156,23 +156,8 @@ def ask(
     if print_message:
         print(message)
     messages = [
-        {"role": "system", "content": f"You answer questions about plants, while attempting to provide "
-                                      f"results specific to {location_id}. "
-                                      f"Include interesting scientific facts about plants generally if relevant. "
-                                      f"if a specific plant is mentioned, provide an interesting fact about the plant."
-                                      f"if the specific plant is known for producing interesting flowers, describe them. "
-                                      f"if the specific plant is known for producing interesting fruit, describe them. "
-                                      f"if the specific plant is known for producing interesting leaves, describe them. "
-                                      f"if the specific plant is known for producing interesting roots, describe them. "
-                                      f"if the specific plant is known for producing interesting seeds, describe them. "
-                                      f"if the specific plant is known for producing interesting phytochemicals, "
-                                      f"describe them and their uses. "
-                                      
-                                      f"if the specific plant is a common garden varietal "
-                                      f"provide a list of other plants that like to be companion plants with it, "
-                                      f"else discuss the optimal growing conditions of the plant. "
-                                      f"provide a link to more information about the plant or concept at the end. "
-                                      f""},
+        {"role": "system", "content": f"You search the internet for useful information "
+                                      f"about the users request and provide it for them in a thought-provoking way"},
 
         {"role": "user", "content": message},
     ]
@@ -190,7 +175,6 @@ def chat_completion_with_embeddings(
         user_input: str,
         df: pd.DataFrame,
         conversation_id: str,
-        location_id: str,
         system_input: str = None,
         model: str = GPT_MODEL,
         print_message: bool = False,
@@ -207,9 +191,6 @@ def chat_completion_with_embeddings(
 
     # Append user message to conversation history
     conversation_history[conversation_id].append({"role": "user", "content": query_msg})
-
-    if system_input is None:
-        system_input = f"You answer questions about plants, while attempting to provide results specific to {location_id}."
 
     messages = [
                    {"role": "system", "content": system_input},
@@ -232,7 +213,7 @@ def chat_completion_with_embeddings(
         raise
 
 
-def google(query: str, number: int, location_id: str, conversation_history: dict = None, conversation_id: str = "default"):
+def google(query: str, number: int, conversation_history: dict = None, conversation_id: str = "default"):
     """Perform Google search and process results with conversation history."""
     search_strings = []
     embeddings = []
@@ -302,19 +283,5 @@ def google(query: str, number: int, location_id: str, conversation_history: dict
     else:
         df = pd.DataFrame({"text": search_strings, "embedding": embeddings})
 
-    try:
-        if conversation_history is None:
-            conversation_history = {}
-
-        results = chat_completion_with_embeddings(
-            conversation_history=conversation_history,
-            user_input=query,
-            df=df,
-            conversation_id=conversation_id,
-            location_id=location_id
-        )
-        return results
-    except Exception as e:
-        logger.error(f"Error in Google search: {str(e)}", exc_info=True)
-        return f"An error occurred while processing your request: {str(e)}"
+    return df
 

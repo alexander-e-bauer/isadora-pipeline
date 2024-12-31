@@ -3,9 +3,11 @@ import pandas as pd
 from flask import jsonify
 
 from xyz.modules.llm.embedding_tools import embedding_model, embedding_generator, embedding_search
+from xyz.modules.llm.embedding_tools.embedding_search import google
 
 logger = config.logger
 OAI = config.OAI
+search_df = pd.DataFrame()
 
 def read_code(update=False):
     if update:
@@ -21,6 +23,9 @@ def read_directory(directory, name, update=False):
 
     df = embedding_model.read_embedding(embedding_path=directory)
     return df, name
+
+
+
 
 
 def get_persona(function):
@@ -95,43 +100,63 @@ def chat_completion_with_embeddings(conversation_history, user_input: str, df: p
         raise
 
 
+def file_embeddings(message, conversation_id, conversation_history, persona, df: pd.DataFrame = None):
+    try:
+        completion = chat_completion_with_embeddings(user_input=message,
+                                                     conversation_id=conversation_id,
+                                                     df=df,
+                                                     conversation_history=conversation_history,
+                                                     print_message=True,
+                                                     system_input=persona)
+        response = f"{completion}"
+        logger.debug(f"Sending response: {response}")
+        logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
+        return jsonify({"response": response})
+    except Exception as e:
+        logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
+        return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
+
+
 def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
+    global search_df
     message = data.get('message', '')
     conversation_id = data.get('conversationId', 'default')
     function = data.get('function', '')
     persona, tool = get_persona(function)
+
     logger.debug(f"Received chat request. \nMessage: {message}, \nConversation ID: {conversation_id},"
                  f"\nFunction: {function} \nPersona: {persona} \nTool: {tool}")
     logger.debug(f"Current conversation history: {conversation_history.get(conversation_id, [])}")
+
     if tool == "embedding":
-        try:
-            completion = chat_completion_with_embeddings(user_input=message,
-                                                         conversation_id=conversation_id,
-                                                         df=df,
-                                                         conversation_history=conversation_history,
-                                                         print_message=True,
-                                                         system_input=persona)
-            response = f"{completion}"
-            logger.debug(f"Sending response: {response}")
-            logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
-            return jsonify({"response": response})
-        except Exception as e:
-            logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
-            return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
+        return file_embeddings(
+            message=message,
+            conversation_id=conversation_id,
+            conversation_history=conversation_history,
+            persona=persona,
+            df=df)
     elif tool == "google-search":
-        try:
-            completion = chat_completion_with_embeddings(user_input=message,
-                                                         conversation_id=conversation_id,
-                                                         df=df,
-                                                         conversation_history=conversation_history,
-                                                         print_message=True,
-                                                         system_input=persona)
-            response = f"{completion}"
-            logger.debug(f"Sending response: {response}")
-            logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
-            return jsonify({"response": response})
-        except Exception as e:
-            logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
-            return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
+        # Check if there's existing conversation history
+        if conversation_id not in conversation_history or not conversation_history[conversation_id]:
+            # No existing history - perform Google search and create embeddings
+            try:
+                search_df = google(message, number=5, conversation_id=conversation_id)
+                return file_embeddings(
+                    message=message,
+                    conversation_id=conversation_id,
+                    conversation_history=conversation_history,
+                    persona=persona,
+                    df=search_df)
+            except Exception as e:
+                logger.error(f"Error in Google search: {str(e)}", exc_info=True)
+                return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
+        else:
+            # Existing history - just the conversation history without new search
+            return file_embeddings(
+                message=message,
+                conversation_id=conversation_id,
+                conversation_history=conversation_history,
+                persona=persona,
+                df=search_df)
 
 
