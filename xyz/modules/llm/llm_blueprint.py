@@ -11,6 +11,7 @@ openai_client = OAI.client
 def init_app(app):
     app.register_blueprint(ai, url_prefix='/llm')
 
+
 def get_completion(prompt, persona="You are a helpful assistant."):
     completion = OAI.client.chat.completions.create(
         model='gpt-4o',
@@ -25,7 +26,32 @@ def get_completion(prompt, persona="You are a helpful assistant."):
     print(f"\nCompletion: \nPrompt: {prompt}\nResult: {result}")
     return result
 
-"""
+
+def get_completion(prompt, conversation_history, conversation_id: str, persona="You are a helpful assistant.",
+                   model="gpt-4o"):
+    if conversation_id not in conversation_history:
+        conversation_history[conversation_id] = []
+    completion = OAI.client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system",
+             "content": f"{persona}"},
+            {"role": "user", "content": f"{prompt}"}
+        ]
+    )
+
+    # Append user message to conversation history
+    conversation_history[conversation_id].append({"role": "user", "content": prompt})
+
+    messages = [
+                   {"role": "system", "content": persona},
+               ] + conversation_history[conversation_id]
+
+    result = completion.choices[0].message.content
+    print(f"\nCompletion: \nPrompt: {prompt}\nResult: {result}")
+    return result
+
+
 @ai.route('/chat', methods=['POST'])
 def chat_completion(user_input, system_input="you are a helpful assistant", image_path=None, tools=None,
                     streaming=False):
@@ -110,14 +136,4 @@ tools = [
 
 
 
-
-def extract_text_from_pdf(pdf_path):
-    text = ""
-    with open(pdf_path, 'rb') as file:
-        pdf_reader = PyPDF2.PdfReader(file)
-        for page in pdf_reader.pages:
-            text += page.extract_text() + "\n"
-    return text
-
-"""
 

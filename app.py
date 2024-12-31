@@ -8,6 +8,7 @@ from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import eventlet
 
+from xyz.modules.llm.llm_blueprint import init_app as init_llm_bp
 from xyz.modules.llm.embedding_tools.embedding_model import read_embedding
 
 eventlet.monkey_patch(thread=False)
@@ -227,6 +228,9 @@ def update_embeddings():
     df = embedding_tool.read_directory('xyz/modules/llm/embedding_tools/embeddings/source_documents',
                                        'source_documents', update=True)
 
+
+# Register the LLM blueprint
+init_llm_bp(app)
 
 if __name__ == '__main__':
     if config.Config.production:

@@ -141,14 +141,12 @@ def query_message(
 ) -> str:
     """Return a message for GPT, with relevant source texts pulled from a dataframe."""
 
-
-
     strings, relatednesses = strings_ranked_by_relatedness(query, df)
     introduction = 'Use the Documents provided below to answer the users questions. '
     question = f"\n\nTask: {query}"
     message = introduction
     for string in strings:
-        next_article = f'\n\nOriginal Code File:\n"""\n{string}\n"""'
+        next_article = f'\n\nProvided Source Material:\n"""\n{string}\n"""'
         if (
                 num_tokens(message + next_article + question, model=model)
                 > token_budget

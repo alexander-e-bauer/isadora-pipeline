@@ -26,39 +26,35 @@ def read_directory(directory, name, update=False):
 
 
 
+def get_completion(prompt, conversation_history, conversation_id: str, persona="You are a helpful assistant.",
+                   model="gpt-4o"):
+
+    if conversation_id not in conversation_history:
+        conversation_history[conversation_id] = []
+
+    # Append user message to conversation history
+    conversation_history[conversation_id].append({"role": "user", "content": prompt})
+
+    messages = [
+                   {"role": "system", "content": persona},
+               ] + conversation_history[conversation_id]
 
 
-def get_persona(function):
-    if function == "none":
-        return "You are a helpful assistant.", "none"
-    elif function == "embedding":
-        return "You are a helpful assistant that uses embeddings to improve the accuracy of your responses.", "embedding"
-    elif function == "search":
-        return "You are a helpful assistant that searches the internet to improve the accuracy of your responses.", "google-search"
-    elif function == "completion":
-        return "You are a helpful assistant that completes code to improve the accuracy of your responses.", "none"
-    elif function == "pirate":
-        return "You are a swashbuckling pirate than can only respond with the demeanor of such.", "none"
-    elif function == "shakespeare":
-        return "You are shakespeare the playwright and can only respond with the demeanor of such.", "none"
-    else:
-        return "You are a helpful assistant.", "none"
+    try:
+        completion = OAI.client.chat.completions.create(
+            model=model,
+            messages=messages
+        )
+        output = completion.choices[0].message.content
 
+        # Append assistant's response to conversation history
+        conversation_history[conversation_id].append({"role": "assistant", "content": output})
 
-
-def get_completion(prompt, persona="You are a helpful assistant.", model="gpt-4o"):
-    completion = OAI.client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system",
-             "content": f"{persona}"},
-            {"role": "user", "content": f"{prompt}"}
-        ]
-    )
-
-    result = completion.choices[0].message.content
-    print(f"\nCompletion: \nPrompt: {prompt}\nResult: {result}")
-    return result
+        print(f"\nCompletion: \nPrompt: {prompt}\nResult: {output}")
+        return output
+    except Exception as e:
+        logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
+        raise
 
 
 def chat_completion_with_embeddings(conversation_history, user_input: str, df: pd.DataFrame, conversation_id: str,
@@ -88,7 +84,12 @@ def chat_completion_with_embeddings(conversation_history, user_input: str, df: p
     logger.debug(f"Messages sent to API: {messages}")
 
     try:
-        output = get_completion(messages, persona=system_input, model=model)
+        output = OAI.client.chat.completions.create(
+        model='gpt-4o',
+        messages=messages
+    )
+
+        output = output.choices[0].message.content
 
         # Append assistant's response to conversation history
         conversation_history[conversation_id].append({"role": "assistant", "content": output})
@@ -122,7 +123,21 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
     message = data.get('message', '')
     conversation_id = data.get('conversationId', 'default')
     function = data.get('function', '')
-    persona, tool = get_persona(function)
+    if function == "embedding":
+        persona = "You are a helpful assistant."
+        tool = "embedding"
+    elif function == "search":
+        persona = "You are a helpful assistant."
+        tool = "search"
+    elif function == "pirate":
+        persona = "You are a helpful assistant who can only respond with the vernacular of a swashbuckler."
+        tool = None
+    elif function == "shakespeare":
+        persona = "You are a helpful assistant who can only respond with the vernacular of Shakespeare."
+        tool = None
+    else:
+        persona = "You are a helpful assistant."
+        tool = None
 
     logger.debug(f"Received chat request. \nMessage: {message}, \nConversation ID: {conversation_id},"
                  f"\nFunction: {function} \nPersona: {persona} \nTool: {tool}")
@@ -135,7 +150,7 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
             conversation_history=conversation_history,
             persona=persona,
             df=df)
-    elif tool == "google-search":
+    elif tool == "search":
         # Check if there's existing conversation history
         if conversation_id not in conversation_history or not conversation_history[conversation_id]:
             # No existing history - perform Google search and create embeddings
@@ -157,8 +172,8 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
                 system_input=persona,
                 df=search_df)
     elif tool == "none":
-        return get_completion(message, conversation_id, persona)
+        return get_completion(message, conversation_id=conversation_id, persona=persona, model="gpt-4o")
     else:
-        return "Error in jsonify_chat"
+        return "\nError XI: embedding_tool.py --- jsonify_chat tool sorting error\n"
 
 
