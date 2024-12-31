@@ -172,7 +172,7 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
                 system_input=persona,
                 df=search_df)
     elif tool == "none":
-        return get_completion(message, conversation_id=conversation_id, persona=persona, model="gpt-4o")
+        return get_completion(message, conversation_history=conversation_history, conversation_id=conversation_id, persona=persona)
     else:
         return "\nError XI: embedding_tool.py --- jsonify_chat tool sorting error\n"
 
