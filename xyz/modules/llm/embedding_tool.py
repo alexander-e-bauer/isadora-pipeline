@@ -186,26 +186,14 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
             persona=persona,
             df=df)
     elif tool == "search":
-        # Check if there's existing conversation history
-        if conversation_id not in conversation_history or not conversation_history[conversation_id]:
-            # No existing history - perform Google search and create embeddings
-            search_df = embedding_search.google(message, 1)
-            return search_embeddings(
-                message=message,
-                conversation_id=conversation_id,
-                conversation_history=conversation_history,
-                persona=persona,
-                df=search_df
-            )
-        else:
-            # Existing history - just the conversation history without new search
-            return search_embeddings(
-                message=message,
-                conversation_id=conversation_id,
-                conversation_history=conversation_history,
-                persona=persona,
-                df=search_df
-            )
+        search_df = embedding_search.google(message, 1)
+        return search_embeddings(
+            message=message,
+            conversation_id=conversation_id,
+            conversation_history=conversation_history,
+            persona=persona,
+            df=search_df
+        )
     elif tool is None:
         return organize(
             message=message,
