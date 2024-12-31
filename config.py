@@ -39,6 +39,7 @@ class Config:
     password_db = os.getenv('POSTGRES_PASSWORD')
     database_name = os.getenv('POSTGRES_DB')
     postgres_uri = f'postgresql://{username_db}:{password_db}@localhost/{database_name}'
+    EMBEDDINGS_DIR = os.path.join('xyz', 'modules', 'llm', 'embedding_tools', 'embeddings')
 
 
 class GOOGLE:

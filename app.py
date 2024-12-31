@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 import ssl
 import urllib3
 from flask import Flask, request, make_response, jsonify
@@ -16,6 +17,13 @@ from xyz.modules.llm import embedding_tool
 import config
 OAI = config.OAI
 logger = config.logger
+
+def ensure_directory_exists(directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+# Use temp directory or environment variable
+EMBEDDINGS_DIR = os.getenv('EMBEDDINGS_DIR', os.path.join(tempfile.gettempdir(), 'embeddings'))
 
 
 # SSL Configuration

@@ -304,14 +304,16 @@ def save_source():
     save_text_to_file(source_code, filepath)
 
 def create_embeddings_of_self():
-    create_excel_file('./embeddings/code_metadata.xlsx')
-    create_embedding_df('./embeddings/code_metadata.xlsx',
-                                         './embeddings/code_metadata.csv')
+    filepath = os.path.join(EMBEDDINGS_DIR, 'code_metadata.xlsx')
+    create_excel_file(filepath)
+    create_embedding_df(filepath,
+                        os.path.join(EMBEDDINGS_DIR, 'code_metadata.csv'))
 
 def create_embeddings_of_text(target, name):
-    create_excel_file_text(target, f'./embeddings/{name}.xlsx')
-    create_embedding_df(f'./embeddings/{name}.xlsx',
-                                         f'./embeddings/{name}.csv')
+    filepath = os.path.join(EMBEDDINGS_DIR, f'{name}.xlsx')
+    create_excel_file(filepath)
+    create_embedding_df(filepath,
+                        os.path.join(EMBEDDINGS_DIR, f'{name}.csv'))
 
 
 def chat_completion_with_embeddings(conversation_history, user_input: str, df: pd.DataFrame, conversation_id: str,
