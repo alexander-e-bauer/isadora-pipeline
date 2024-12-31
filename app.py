@@ -7,6 +7,7 @@ from flask import Flask, request, make_response, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 import eventlet
+from werkzeug.serving import WSGIRequestHandler
 
 from xyz.modules.llm.llm_blueprint import init_app as init_llm_bp
 from xyz.modules.llm.embedding_tools.embedding_model import read_embedding
@@ -44,6 +45,8 @@ ssl_context = create_ssl_context()
 conversation_history = {}
 
 app = Flask(__name__)
+
+WSGIRequestHandler.timeout = 600
 
 # Explicitly define allowed origins
 ALLOWED_ORIGINS = [
