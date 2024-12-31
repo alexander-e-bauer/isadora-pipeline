@@ -26,17 +26,19 @@ def read_directory(directory, name, update=False):
 
 
 
-def get_completion(prompt, conversation_history, conversation_id: str, persona="You are a helpful assistant.",
-                   model="gpt-4o"):
+def get_completion(conversation_history, user_input: str, conversation_id: str,
+                                    system_input: str = 'You are a helpful assistant.',
+                                    model: str = "gpt-4o", streaming: bool = False,
+                                    print_message: bool = False) -> str:
 
     if conversation_id not in conversation_history:
         conversation_history[conversation_id] = []
 
     # Append user message to conversation history
-    conversation_history[conversation_id].append({"role": "user", "content": prompt})
+    conversation_history[conversation_id].append({"role": "user", "content": user_input})
 
     messages = [
-                   {"role": "system", "content": persona},
+                   {"role": "system", "content": system_input},
                ] + conversation_history[conversation_id]
 
 
@@ -50,7 +52,7 @@ def get_completion(prompt, conversation_history, conversation_id: str, persona="
         # Append assistant's response to conversation history
         conversation_history[conversation_id].append({"role": "assistant", "content": output})
 
-        print(f"\nCompletion: \nPrompt: {prompt}\nResult: {output}")
+        print(f"\nCompletion: \nPrompt: {user_input}\nResult: {output}")
         return output
     except Exception as e:
         logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
@@ -101,6 +103,23 @@ def chat_completion_with_embeddings(conversation_history, user_input: str, df: p
         raise
 
 
+def organize(message, conversation_id, conversation_history, persona, df: pd.DataFrame = None):
+    try:
+        completion = get_completion(
+            user_input=message,
+            conversation_id=conversation_id,
+            conversation_history=conversation_history,
+            print_message=True,
+            system_input=persona)
+        response = f"{completion}"
+        logger.debug(f"Sending response: {response}")
+        logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
+        return jsonify({"response": response})
+    except Exception as e:
+        logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
+        return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
+
+
 def file_embeddings(message, conversation_id, conversation_history, persona, df: pd.DataFrame = None):
     try:
         completion = chat_completion_with_embeddings(user_input=message,
@@ -117,6 +136,22 @@ def file_embeddings(message, conversation_id, conversation_history, persona, df:
         logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
         return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
 
+
+def search_embeddings(message, conversation_id, conversation_history, persona, df: pd.DataFrame = None):
+    try:
+        completion = chat_completion_with_embeddings(user_input=message,
+                                                     conversation_id=conversation_id,
+                                                     df=df,
+                                                     conversation_history=conversation_history,
+                                                     print_message=True,
+                                                     system_input=persona)
+        response = f"{completion}"
+        logger.debug(f"Sending response: {response}")
+        logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
+        return jsonify({"response": response})
+    except Exception as e:
+        logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
+        return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
 
 def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
     global search_df
@@ -154,25 +189,28 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
         # Check if there's existing conversation history
         if conversation_id not in conversation_history or not conversation_history[conversation_id]:
             # No existing history - perform Google search and create embeddings
-            try:
-                search_df = google(message, number=5, conversation_id=conversation_id)
-                return embedding_search.chat_completion_with_embeddings(user_input=message,
-                    conversation_id=conversation_id,
-                    conversation_history=conversation_history,
-                    system_input=persona,
-                    df=search_df)
-            except Exception as e:
-                logger.error(f"Error in Google search: {str(e)}", exc_info=True)
-                return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
-        else:
-            # Existing history - just the conversation history without new search
-            return embedding_search.chat_completion_with_embeddings(user_input=message,
+            return search_embeddings(
+                message=message,
                 conversation_id=conversation_id,
                 conversation_history=conversation_history,
-                system_input=persona,
-                df=search_df)
-    elif tool == "none":
-        return get_completion(message, conversation_history=conversation_history, conversation_id=conversation_id, persona=persona)
+                persona=persona,
+                df=search_df
+            )
+        else:
+            # Existing history - just the conversation history without new search
+            return search_embeddings(
+                message=message,
+                conversation_id=conversation_id,
+                conversation_history=conversation_history,
+                persona=persona,
+                df=search_df
+            )
+    elif tool is None:
+        return organize(
+            message=message,
+            conversation_id=conversation_id,
+            conversation_history=conversation_history,
+            persona=persona)
     else:
         return "\nError XI: embedding_tool.py --- jsonify_chat tool sorting error\n"
 
