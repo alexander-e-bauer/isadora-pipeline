@@ -104,8 +104,8 @@ app.config.update(
 )
 
 
-#df = embedding_tool.read_code()
-df = embedding_tool.read_directory('xyz/modules/llm/embedding_tools/embeddings/source_documents', 'source_documents', update=True)
+df = embedding_tool.read_code()
+#df = embedding_tool.read_directory('xyz/modules/llm/embedding_tools/embeddings/source_documents', 'source_documents', update=True)
 
 # Debug logging
 @app.before_request
