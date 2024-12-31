@@ -141,22 +141,20 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
             # No existing history - perform Google search and create embeddings
             try:
                 search_df = google(message, number=5, conversation_id=conversation_id)
-                return file_embeddings(
-                    message=message,
+                return embedding_search.chat_completion_with_embeddings(user_input=message,
                     conversation_id=conversation_id,
                     conversation_history=conversation_history,
-                    persona=persona,
+                    system_input=persona,
                     df=search_df)
             except Exception as e:
                 logger.error(f"Error in Google search: {str(e)}", exc_info=True)
                 return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
         else:
             # Existing history - just the conversation history without new search
-            return file_embeddings(
-                message=message,
+            return embedding_search.chat_completion_with_embeddings(user_input=message,
                 conversation_id=conversation_id,
                 conversation_history=conversation_history,
-                persona=persona,
+                system_input=persona,
                 df=search_df)
 
 
