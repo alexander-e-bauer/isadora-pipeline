@@ -41,6 +41,12 @@ class Config:
     postgres_uri = f'postgresql://{username_db}:{password_db}@localhost/{database_name}'
 
 
+class GOOGLE:
+    """Google configuration variables."""
+    google_search_key = os.getenv('GOOGLE_SEARCH_KEY')
+    google_search_engine_id = os.getenv('GOOGLE_SEARCH_ENGINE_ID')
+
+
 class OAI:
     """OpenAI configuration variables."""
     # OpenAI Client

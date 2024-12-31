@@ -104,7 +104,8 @@ app.config.update(
 )
 
 
-df = embedding_tool.read_code()
+#df = embedding_tool.read_code()
+df = embedding_tool.read_directory('xyz/modules/llm/embedding_tools/embeddings/source_documents', 'source_documents', update=True)
 
 # Debug logging
 @app.before_request
@@ -210,6 +211,14 @@ def handle_error(error):
         "message": "An internal error occurred"
     })
     return response, 500
+
+
+@app.route('/update_embeddings')
+def update_embeddings():
+    global df
+    df = embedding_tool.read_directory('xyz/modules/llm/embedding_tools/embeddings/source_documents',
+                                       'source_documents', update=True)
+
 
 if __name__ == '__main__':
     if config.Config.production:

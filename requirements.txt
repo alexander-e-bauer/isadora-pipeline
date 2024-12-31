@@ -75,3 +75,4 @@ PyPDF2~=3.0.1
 beautifulsoup4~=4.12.3
 redis~=5.2.1
 scipy~=1.14.1
+google-api-python-client~=2.156.0

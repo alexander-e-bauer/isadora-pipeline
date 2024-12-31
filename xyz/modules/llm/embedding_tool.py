@@ -2,7 +2,7 @@ import config
 import pandas as pd
 from flask import jsonify
 
-from xyz.modules.llm.embedding_tools import embedding_model, embedding_generator
+from xyz.modules.llm.embedding_tools import embedding_model, embedding_generator, embedding_search
 
 logger = config.logger
 OAI = config.OAI
@@ -11,23 +11,33 @@ def read_code(update=False):
     if update:
         embedding_generator.create_embeddings_of_self()
 
-    df = embedding_model.read_embedding()
+    df = embedding_model.read_embedding(embedding_path='xyz/modules/llm/embedding_tools/embeddings/code_metadata.csv')
     return df
 
 
+def read_directory(directory, name, update=False):
+    if update:
+        embedding_generator.create_embeddings_of_text(directory, name)
+
+    df = embedding_model.read_embedding(embedding_path=directory)
+    return df, name
+
+
 def get_persona(function):
-    if function == "isadora":
-        return "You are a helpful assistant."
+    if function == "none":
+        return "You are a helpful assistant.", "none"
     elif function == "embedding":
-        return "You are a helpful assistant that uses embeddings to improve the accuracy of your responses."
-    elif function == "scrape":
-        return "You are a helpful assistant that scrapes websites to improve the accuracy of your responses."
+        return "You are a helpful assistant that uses embeddings to improve the accuracy of your responses.", "embedding"
+    elif function == "search":
+        return "You are a helpful assistant that searches the internet to improve the accuracy of your responses.", "google-search"
     elif function == "completion":
-        return "You are a helpful assistant that completes code to improve the accuracy of your responses."
+        return "You are a helpful assistant that completes code to improve the accuracy of your responses.", "none"
     elif function == "pirate":
-        return "You are a swashbuckling pirate than can only respond with the demeanor of such."
+        return "You are a swashbuckling pirate than can only respond with the demeanor of such.", "none"
     elif function == "shakespeare":
-        return "You are shakespeare the playwright and can only respond with the demeanor of such."
+        return "You are shakespeare the playwright and can only respond with the demeanor of such.", "none"
+    else:
+        return "You are a helpful assistant.", "none"
 
 
 
@@ -89,22 +99,39 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
     message = data.get('message', '')
     conversation_id = data.get('conversationId', 'default')
     function = data.get('function', '')
-    persona = get_persona(function)
-    logger.debug(f"Received chat request. Message: {message}, Conversation ID: {conversation_id}")
+    persona, tool = get_persona(function)
+    logger.debug(f"Received chat request. \nMessage: {message}, \nConversation ID: {conversation_id},"
+                 f"\nFunction: {function} \nPersona: {persona} \nTool: {tool}")
     logger.debug(f"Current conversation history: {conversation_history.get(conversation_id, [])}")
-    try:
-        completion = chat_completion_with_embeddings(user_input=message,
-                                                     conversation_id=conversation_id,
-                                                     df=df,
-                                                     conversation_history=conversation_history,
-                                                     print_message=True,
-                                                     system_input=persona)
-        response = f"{completion}"
-        logger.debug(f"Sending response: {response}")
-        logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
-        return jsonify({"response": response})
-    except Exception as e:
-        logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
-        return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
+    if tool == "embedding":
+        try:
+            completion = chat_completion_with_embeddings(user_input=message,
+                                                         conversation_id=conversation_id,
+                                                         df=df,
+                                                         conversation_history=conversation_history,
+                                                         print_message=True,
+                                                         system_input=persona)
+            response = f"{completion}"
+            logger.debug(f"Sending response: {response}")
+            logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
+            return jsonify({"response": response})
+        except Exception as e:
+            logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
+            return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
+    elif tool == "google-search":
+        try:
+            completion = chat_completion_with_embeddings(user_input=message,
+                                                         conversation_id=conversation_id,
+                                                         df=df,
+                                                         conversation_history=conversation_history,
+                                                         print_message=True,
+                                                         system_input=persona)
+            response = f"{completion}"
+            logger.debug(f"Sending response: {response}")
+            logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
+            return jsonify({"response": response})
+        except Exception as e:
+            logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
+            return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
 
 
