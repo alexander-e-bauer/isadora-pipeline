@@ -156,5 +156,7 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
                 conversation_history=conversation_history,
                 system_input=persona,
                 df=search_df)
+    else:
+        return get_completion(message, conversation_id, persona)
 
 
