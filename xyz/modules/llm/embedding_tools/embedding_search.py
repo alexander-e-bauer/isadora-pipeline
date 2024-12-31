@@ -268,11 +268,14 @@ def google(query: str, number: int, conversation_history: dict = None, conversat
         batch_end = batch_start + BATCH_SIZE
         batch = search_strings[batch_start:batch_end]
         print(f"Batch {batch_start} to {batch_end - 1}")
-        response = openai.Embedding.create(model=EMBEDDING_MODEL, input=batch)
-        for i, be in enumerate(response["data"]):
-            assert i == be["index"]  # double check embeddings are in same order as input
-        batch_embeddings = [e["embedding"] for e in response["data"]]
-        embeddings.extend(batch_embeddings)
+        response = OAI.client.embeddings.create(model=EMBEDDING_MODEL, input=batch)
+        print(response)
+        #embedding = response.data[0].embedding
+
+        for i, be in enumerate(response.data):
+            assert i == be.index  # double check embeddings are in same order as input
+            embeddings.append(be.embedding)  # Extract the embedding
+
 
     print(f"{len(embeddings)} embeddings retrieved.")
 
@@ -285,3 +288,4 @@ def google(query: str, number: int, conversation_history: dict = None, conversat
 
     return df
 
+answer = google("Black holes 2024", 5, conversation_history=None, conversation_id="default")
