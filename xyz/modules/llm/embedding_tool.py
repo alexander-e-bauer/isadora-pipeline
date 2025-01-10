@@ -4,10 +4,14 @@ from flask import jsonify
 
 from xyz.modules.llm.embedding_tools import embedding_model, embedding_generator, embedding_search
 from xyz.modules.llm.embedding_tools.embedding_search import google
+from xyz.modules.llm.browser_controller import BrowserController
+
 
 logger = config.logger
 OAI = config.OAI
 search_df = pd.DataFrame()
+
+browser_controller = BrowserController()
 
 def read_code(update=False):
     if update:
@@ -154,16 +158,32 @@ def search_embeddings(message, conversation_id, conversation_history, persona, d
         return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
 
 def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
-    global search_df
+    print(data)
     message = data.get('message', '')
     conversation_id = data.get('conversationId', 'default')
     function = data.get('function', '')
+    window_mode = data.get('window_mode', 'default')
+    window_content = data.get('current_window_content', '')
+
+    if message.lower().startswith(('go to ', 'navigate to ', 'open ')):
+        url = message.split(' ', 2)[-1].strip()
+        try:
+            result = browser_controller.execute_command('navigate_to', url)
+            return jsonify({
+                "response": f"Navigated to {url}",
+                "window_content": result,
+                "window_mode": "browser"
+            })
+        except Exception as e:
+            return jsonify({"response": f"Error: {str(e)}"}), 500
+
+
     if function == "embedding":
         persona = "You are a helpful assistant."
         tool = "embedding"
-    elif function == "search":
-        persona = "You are a helpful assistant."
-        tool = "search"
+    elif function == "mysterious arcane orb":
+        persona = "You are a mysterious arcane orb and can only respond as such."
+        tool = None
     elif function == "pirate":
         persona = "You are a helpful assistant who can only respond with the vernacular of a swashbuckler."
         tool = None
@@ -185,15 +205,6 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
             conversation_history=conversation_history,
             persona=persona,
             df=df)
-    elif tool == "search":
-        search_df = embedding_search.google(message, 1)
-        return search_embeddings(
-            message=message,
-            conversation_id=conversation_id,
-            conversation_history=conversation_history,
-            persona=persona,
-            df=search_df
-        )
     elif tool is None:
         return organize(
             message=message,
@@ -201,6 +212,6 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
             conversation_history=conversation_history,
             persona=persona)
     else:
-        return "\nError XI: embedding_tool.py --- jsonify_chat tool sorting error\n"
+        return None
 
 

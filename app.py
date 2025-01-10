@@ -140,6 +140,34 @@ def after_request(response):
     logger.debug('Response Headers: %s', response.headers)
     return response
 
+
+@app.route('/api/browser/start', methods=['POST'])
+def start_browser():
+    try:
+        browser_controller.start_browser()
+        return jsonify({"status": "success", "message": "Browser started successfully"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/browser/navigate', methods=['POST'])
+def navigate():
+    data = request.json
+    url = data.get('url')
+
+    if not url:
+        return jsonify({"status": "error", "message": "URL is required"}), 400
+
+    try:
+        result = browser_controller.execute_command('navigate_to', url)
+        socketio.emit('window_update', {
+            'content': result,
+            'mode': 'browser'
+        })
+        return jsonify({"status": "success", "data": result})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 # Explicit OPTIONS handler for preflight requests
 @app.route('/api/chat', methods=['OPTIONS'])
 def handle_preflight():
@@ -230,6 +258,8 @@ def update_embeddings():
     global df
     df = embedding_tool.read_directory('xyz/modules/llm/embedding_tools/embeddings/source_documents',
                                        'source_documents', update=True)
+
+
 
 
 # Register the LLM blueprint
