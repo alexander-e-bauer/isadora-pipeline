@@ -11,7 +11,8 @@ monkey.patch_all()
 from werkzeug.serving import WSGIRequestHandler
 
 from xyz.modules.llm.llm_blueprint import init_app as init_llm_bp
-from xyz.modules.llm.embedding_tools.embedding_model import read_embedding
+from xyz.modules.llm.browser_controller import BrowserController
+
 
 sys.setrecursionlimit(3000)
 
@@ -19,6 +20,8 @@ from xyz.modules.llm import embedding_tool
 import config
 OAI = config.OAI
 logger = config.logger
+browser_controller = BrowserController()
+
 
 def ensure_directory_exists(directory):
     if not os.path.exists(directory):
