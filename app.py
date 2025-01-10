@@ -22,15 +22,14 @@ import config
 OAI = config.OAI
 logger = config.logger
 
+x = 100
 
 def ensure_directory_exists(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-
 # Use temp directory or environment variable
 EMBEDDINGS_DIR = os.getenv('EMBEDDINGS_DIR', os.path.join(tempfile.gettempdir(), 'embeddings'))
-
 
 # SSL Configuration
 def create_ssl_context():
@@ -58,34 +57,23 @@ ALLOWED_ORIGINS = [
     'https://isadora-f5fbebf38bc6.herokuapp.com',
     'https://isadora-v2-74e5a1b97f07.herokuapp.com',
     'https://34.16.120.105',
+    'http://34.16.120.105',  # Add HTTP version
     'https://isadora.ai',
-    'http://localhost:3000'
+    'http://localhost:3000',
+    '*'  # During development/testing only
 ]
 
+
 # Updated CORS configuration with explicit options
+# Replace the complex CORS configuration with a simpler one
 CORS(app,
-     resources={
-         r"/*": {
-             "origins": ALLOWED_ORIGINS,
-             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             "allow_headers": [
-                 "Content-Type",
-                 "Authorization",
-                 "X-Requested-With",
-                 "Accept",
-                 "Origin",
-                 "Access-Control-Request-Method",
-                 "Access-Control-Request-Headers"
-             ],
-             "expose_headers": [
-                 "Content-Type",
-                 "Authorization"
-             ],
-             "supports_credentials": True,
-             "send_wildcard": False,
-             "max_age": 86400
-         }
-     })
+     resources={r"/*": {"origins": ALLOWED_ORIGINS}},
+     supports_credentials=True,
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With",
+                   "Accept", "Origin", "Access-Control-Request-Method",
+                   "Access-Control-Request-Headers"],
+     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+
 
 # Configure SocketIO with explicit CORS settings
 socketio = SocketIO(
@@ -138,15 +126,15 @@ def log_request_info():
 @app.after_request
 def after_request(response):
     origin = request.headers.get('Origin')
-    if origin in ALLOWED_ORIGINS:
+    if origin in ALLOWED_ORIGINS or '*' in ALLOWED_ORIGINS:
         response.headers.update({
-            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Origin': origin or '*',
             'Access-Control-Allow-Credentials': 'true',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
+            'Access-Control-Expose-Headers': 'Content-Type, Authorization',
             'Access-Control-Max-Age': '86400'
         })
-    logger.debug('Response Headers: %s', response.headers)
     return response
 
 
