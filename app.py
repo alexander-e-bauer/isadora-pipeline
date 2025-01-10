@@ -84,7 +84,7 @@ CORS(app,
 socketio = SocketIO(
     app,
     cors_allowed_origins=ALLOWED_ORIGINS,
-    async_mode='eventlet',
+    async_mode='gevent',
     ping_timeout=60000,
     ping_interval=25000,
     always_connect=True,
