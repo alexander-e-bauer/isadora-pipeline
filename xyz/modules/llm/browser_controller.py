@@ -71,3 +71,6 @@ class BrowserController:
         if self.driver:
             self.driver.quit()
             self.driver = None
+
+def bitch():
+    fluffin = "George"
