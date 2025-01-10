@@ -7,25 +7,29 @@ from flask import Flask, request, make_response, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 from gevent import monkey
+
 monkey.patch_all()
 from werkzeug.serving import WSGIRequestHandler
 
 from xyz.modules.llm.llm_blueprint import init_app as init_llm_bp
-from xyz.modules.llm.browser_controller import BrowserController
-
+from xyz.modules.llm.browser_service import BrowserService
 
 sys.setrecursionlimit(3000)
 
 from xyz.modules.llm import embedding_tool
 import config
+
 OAI = config.OAI
 logger = config.logger
-browser_controller = BrowserController()
+
+# Initialize browser service with the VM URL
+browser_service = BrowserService()
 
 
 def ensure_directory_exists(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
+
 
 # Use temp directory or environment variable
 EMBEDDINGS_DIR = os.getenv('EMBEDDINGS_DIR', os.path.join(tempfile.gettempdir(), 'embeddings'))
@@ -42,6 +46,7 @@ def create_ssl_context():
         logger.error(f"Failed to create SSL context: {e}")
         return None
 
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 ssl_context = create_ssl_context()
 
@@ -55,6 +60,8 @@ WSGIRequestHandler.timeout = 600
 ALLOWED_ORIGINS = [
     'https://isadora-f5fbebf38bc6.herokuapp.com',
     'https://isadora-v2-74e5a1b97f07.herokuapp.com',
+    'https://34.16.120.105',
+    'https://isadora.ai',
     'http://localhost:3000'
 ]
 
@@ -102,7 +109,6 @@ app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY"),
     SQLALCHEMY_DATABASE_URI=f'postgresql://{os.getenv("POSTGRES_USER")}:{os.getenv("POSTGRES_PASSWORD")}@localhost/{os.getenv("POSTGRES_DB")}',
     SECURITY_PASSWORD_SALT=os.environ.get("SECURITY_PASSWORD_SALT"),
-    # Security configuration
     SECURITY_REGISTERABLE=True,
     SECURITY_RECOVERABLE=True,
     SECURITY_CHANGEABLE=True,
@@ -111,24 +117,23 @@ app.config.update(
     SECURITY_LOGOUT_URL='/logout',
     SECURITY_RESET_URL='/reset',
     SECURITY_CHANGE_URL='/change',
-    # CORS settings
     SECURITY_CSRF_COOKIE_NAME="XSRF-TOKEN",
     SECURITY_CSRF_HEADER_NAME="X-XSRF-TOKEN",
-    WTF_CSRF_CHECK_DEFAULT=False,  # Disable CSRF for API endpoints
-    WTF_CSRF_TIME_LIMIT=None
+    WTF_CSRF_CHECK_DEFAULT=False,
+    WTF_CSRF_TIME_LIMIT=None,
+    BROWSER_SERVICE_URL=os.getenv('BROWSER_SERVICE_URL'),
+    BROWSER_SERVICE_API_KEY=os.getenv('BROWSER_SERVICE_API_KEY')
 )
 
+df = embedding_tool.initialize_code_embeddings()
 
-df = embedding_tool.read_code()
-#df = embedding_tool.read_directory('xyz/modules/llm/embedding_tools/embeddings/source_documents', 'source_documents', update=True)
 
-# Debug logging
 @app.before_request
 def log_request_info():
     logger.debug('Headers: %s', request.headers)
     logger.debug('Body: %s', request.get_data())
 
-# Explicit CORS headers middleware
+
 @app.after_request
 def after_request(response):
     origin = request.headers.get('Origin')
@@ -144,15 +149,6 @@ def after_request(response):
     return response
 
 
-@app.route('/api/browser/start', methods=['POST'])
-def start_browser():
-    try:
-        browser_controller.start_browser()
-        return jsonify({"status": "success", "message": "Browser started successfully"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
 @app.route('/api/browser/navigate', methods=['POST'])
 def navigate():
     data = request.json
@@ -162,16 +158,21 @@ def navigate():
         return jsonify({"status": "error", "message": "URL is required"}), 400
 
     try:
-        result = browser_controller.execute_command('navigate_to', url)
+        result = browser_service.navigate_to(url)
+        logger.debug(f"Navigated to {url} with result: {result}")
+
+        # Emit the result through socket.io
         socketio.emit('window_update', {
             'content': result,
             'mode': 'browser'
         })
+
         return jsonify({"status": "success", "data": result})
     except Exception as e:
+        logger.error(f"Navigation error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# Explicit OPTIONS handler for preflight requests
+
 @app.route('/api/chat', methods=['OPTIONS'])
 def handle_preflight():
     response = make_response()
@@ -191,7 +192,7 @@ def handle_preflight():
 def chat():
     try:
         data = request.json
-        result = embedding_tool.jsonify_chat(data, conversation_history=conversation_history, df=df)
+        result = embedding_tool.process_chat_request(data, conversation_history=conversation_history, df=df)
         response = make_response(result)
         origin = request.headers.get('Origin')
         if origin in ALLOWED_ORIGINS:
@@ -209,15 +210,29 @@ def chat():
         error_response.status_code = 500
         return error_response
 
+
 # Socket event handlers
 @socketio.on('connect')
 def handle_connect():
     logger.info(f"Client connected: {request.sid}")
     emit('connect', {'status': 'connected', 'sid': request.sid})
 
+
 @socketio.on('disconnect')
 def handle_disconnect(data=None):
     logger.info(f"Client disconnected: {request.sid}")
+
+
+@socketio.on('browse')
+def handle_browse(data):
+    url = data.get('url')
+    try:
+        result = browser_service.navigate_to(url)
+        socketio.emit('browse_result', result)
+    except Exception as e:
+        logger.error(f"Browse error: {str(e)}")
+        socketio.emit('error', {'message': f'Failed to browse: {str(e)}'})
+
 
 @socketio.on('typing')
 def handle_typing(data):
@@ -227,6 +242,7 @@ def handle_typing(data):
         logger.error(f"Error in typing event: {e}")
         emit('error', {'message': 'Failed to broadcast typing status'})
 
+
 @socketio.on('stop_typing')
 def handle_stop_typing(data):
     try:
@@ -235,17 +251,19 @@ def handle_stop_typing(data):
         logger.error(f"Error in stop_typing event: {e}")
         emit('error', {'message': 'Failed to broadcast stop typing status'})
 
+
 @socketio.on_error()
 def error_handler(e):
     logger.error(f"SocketIO error: {e}")
     return {"error": str(e)}
+
 
 @socketio.on_error_default
 def default_error_handler(e):
     logger.error(f"SocketIO default error: {e}")
     return {"error": str(e)}
 
-# Error handling
+
 @app.errorhandler(Exception)
 def handle_error(error):
     logger.error(f"An error occurred: {error}")
@@ -259,16 +277,17 @@ def handle_error(error):
 @app.route('/update_embeddings')
 def update_embeddings():
     global df
-    df = embedding_tool.read_directory('xyz/modules/llm/embedding_tools/embeddings/source_documents',
+    df = embedding_tool.initialize_directory_embeddings('xyz/modules/llm/embedding_tools/embeddings/source_documents',
                                        'source_documents', update=True)
-
-
+    return jsonify({"status": "success", "message": "Embeddings updated"})
 
 
 # Register the LLM blueprint
 init_llm_bp(app)
 
 if __name__ == '__main__':
+    ensure_directory_exists(EMBEDDINGS_DIR)
+
     if config.Config.production:
         socketio.run(
             app,

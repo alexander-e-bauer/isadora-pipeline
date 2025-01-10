@@ -4,16 +4,17 @@ from flask import jsonify
 
 from xyz.modules.llm.embedding_tools import embedding_model, embedding_generator, embedding_search
 from xyz.modules.llm.embedding_tools.embedding_search import google
-from xyz.modules.llm.browser_controller import BrowserController
-
+from xyz.modules.llm.browser_service import BrowserService
 
 logger = config.logger
 OAI = config.OAI
 search_df = pd.DataFrame()
 
-browser_controller = BrowserController()
+browser_service = BrowserService()
 
-def read_code(update=False):
+
+def initialize_code_embeddings(update=False):
+    """Load or update code embeddings from the codebase"""
     if update:
         embedding_generator.create_embeddings_of_self()
 
@@ -21,7 +22,8 @@ def read_code(update=False):
     return df
 
 
-def read_directory(directory, name, update=False):
+def initialize_directory_embeddings(directory, name, update=False):
+    """Load or update embeddings from a specific directory"""
     if update:
         embedding_generator.create_embeddings_of_text(directory, name)
 
@@ -29,22 +31,19 @@ def read_directory(directory, name, update=False):
     return df, name
 
 
-
-def get_completion(conversation_history, user_input: str, conversation_id: str,
-                                    system_input: str = 'You are a helpful assistant.',
-                                    model: str = "gpt-4o", streaming: bool = False,
-                                    print_message: bool = False) -> str:
-
+def process_basic_chat(conversation_history, user_input: str, conversation_id: str,
+                       system_input: str = 'You are a helpful assistant.',
+                       model: str = "gpt-4o", streaming: bool = False,
+                       print_message: bool = False) -> str:
+    """Process a basic chat interaction without embeddings"""
     if conversation_id not in conversation_history:
         conversation_history[conversation_id] = []
 
-    # Append user message to conversation history
     conversation_history[conversation_id].append({"role": "user", "content": user_input})
 
     messages = [
                    {"role": "system", "content": system_input},
                ] + conversation_history[conversation_id]
-
 
     try:
         completion = OAI.client.chat.completions.create(
@@ -53,7 +52,6 @@ def get_completion(conversation_history, user_input: str, conversation_id: str,
         )
         output = completion.choices[0].message.content
 
-        # Append assistant's response to conversation history
         conversation_history[conversation_id].append({"role": "assistant", "content": output})
 
         print(f"\nCompletion: \nPrompt: {user_input}\nResult: {output}")
@@ -63,24 +61,19 @@ def get_completion(conversation_history, user_input: str, conversation_id: str,
         raise
 
 
-def chat_completion_with_embeddings(conversation_history, user_input: str, df: pd.DataFrame, conversation_id: str,
+def process_embedding_enhanced_chat(conversation_history, user_input: str, df: pd.DataFrame, conversation_id: str,
                                     system_input: str = 'You are a helpful assistant.',
                                     model: str = "gpt-4o", streaming: bool = False,
                                     print_message: bool = False) -> str:
-
-    """
-    Performs chat completion using GPT, incorporating conversation history and document embeddings.
-    """
+    """Process chat with context from embeddings"""
     if conversation_id not in conversation_history:
         conversation_history[conversation_id] = []
 
-    # Create the query message using the dataframe
     query_msg = embedding_model.query_message(user_input, df, model=model)
 
     if print_message:
         print(f"Query message: {query_msg}")
 
-    # Append user message to conversation history
     conversation_history[conversation_id].append({"role": "user", "content": query_msg})
 
     messages = [
@@ -91,13 +84,11 @@ def chat_completion_with_embeddings(conversation_history, user_input: str, df: p
 
     try:
         output = OAI.client.chat.completions.create(
-        model='gpt-4o',
-        messages=messages
-    )
+            model='gpt-4o',
+            messages=messages
+        )
 
         output = output.choices[0].message.content
-
-        # Append assistant's response to conversation history
         conversation_history[conversation_id].append({"role": "assistant", "content": output})
 
         logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
@@ -107,9 +98,10 @@ def chat_completion_with_embeddings(conversation_history, user_input: str, df: p
         raise
 
 
-def organize(message, conversation_id, conversation_history, persona, df: pd.DataFrame = None):
+def handle_basic_chat_response(message, conversation_id, conversation_history, persona, df: pd.DataFrame = None):
+    """Handle basic chat interactions and format response"""
     try:
-        completion = get_completion(
+        completion = process_basic_chat(
             user_input=message,
             conversation_id=conversation_id,
             conversation_history=conversation_history,
@@ -124,14 +116,16 @@ def organize(message, conversation_id, conversation_history, persona, df: pd.Dat
         return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
 
 
-def file_embeddings(message, conversation_id, conversation_history, persona, df: pd.DataFrame = None):
+def handle_embedding_chat_response(message, conversation_id, conversation_history, persona, df: pd.DataFrame = None):
+    """Handle embedding-enhanced chat interactions and format response"""
     try:
-        completion = chat_completion_with_embeddings(user_input=message,
-                                                     conversation_id=conversation_id,
-                                                     df=df,
-                                                     conversation_history=conversation_history,
-                                                     print_message=True,
-                                                     system_input=persona)
+        completion = process_embedding_enhanced_chat(
+            user_input=message,
+            conversation_id=conversation_id,
+            df=df,
+            conversation_history=conversation_history,
+            print_message=True,
+            system_input=persona)
         response = f"{completion}"
         logger.debug(f"Sending response: {response}")
         logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
@@ -141,23 +135,8 @@ def file_embeddings(message, conversation_id, conversation_history, persona, df:
         return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
 
 
-def search_embeddings(message, conversation_id, conversation_history, persona, df: pd.DataFrame = None):
-    try:
-        completion = chat_completion_with_embeddings(user_input=message,
-                                                     conversation_id=conversation_id,
-                                                     df=df,
-                                                     conversation_history=conversation_history,
-                                                     print_message=True,
-                                                     system_input=persona)
-        response = f"{completion}"
-        logger.debug(f"Sending response: {response}")
-        logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
-        return jsonify({"response": response})
-    except Exception as e:
-        logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
-        return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
-
-def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
+def process_chat_request(data, conversation_history, df: pd.DataFrame = None):
+    """Main entry point for processing chat requests"""
     print(data)
     message = data.get('message', '')
     conversation_id = data.get('conversationId', 'default')
@@ -165,53 +144,46 @@ def jsonify_chat(data, conversation_history, df: pd.DataFrame = None):
     window_mode = data.get('window_mode', 'default')
     window_content = data.get('current_window_content', '')
 
+    # Handle browser navigation commands
     if message.lower().startswith(('go to ', 'navigate to ', 'open ')):
         url = message.split(' ', 2)[-1].strip()
         try:
-            result = browser_controller.execute_command('navigate_to', url)
+            result = browser_service.execute_command('navigate_to', url)
             return jsonify({
                 "response": f"Navigated to {url}",
                 "window_content": result,
                 "window_mode": "browser"
             })
         except Exception as e:
-            return jsonify({"response": f"Error: {str(e)}"}), 500
+            return jsonify({"error": f"Error: {str(e)}"}), 500
 
+    # Set persona based on function
+    persona_map = {
+        "embedding": "You are a helpful assistant.",
+        "mysterious arcane orb": "You are a mysterious arcane orb and can only respond as such.",
+        "pirate": "You are a helpful assistant who can only respond with the vernacular of a swashbuckler.",
+        "shakespeare": "You are a helpful assistant who can only respond with the vernacular of Shakespeare.",
+    }
 
-    if function == "embedding":
-        persona = "You are a helpful assistant."
-        tool = "embedding"
-    elif function == "mysterious arcane orb":
-        persona = "You are a mysterious arcane orb and can only respond as such."
-        tool = None
-    elif function == "pirate":
-        persona = "You are a helpful assistant who can only respond with the vernacular of a swashbuckler."
-        tool = None
-    elif function == "shakespeare":
-        persona = "You are a helpful assistant who can only respond with the vernacular of Shakespeare."
-        tool = None
-    else:
-        persona = "You are a helpful assistant."
-        tool = None
+    persona = persona_map.get(function, "You are a helpful assistant.")
+    tool = "embedding" if function == "embedding" else None
 
     logger.debug(f"Received chat request. \nMessage: {message}, \nConversation ID: {conversation_id},"
                  f"\nFunction: {function} \nPersona: {persona} \nTool: {tool}")
     logger.debug(f"Current conversation history: {conversation_history.get(conversation_id, [])}")
 
     if tool == "embedding":
-        return file_embeddings(
+        return handle_embedding_chat_response(
             message=message,
             conversation_id=conversation_id,
             conversation_history=conversation_history,
             persona=persona,
             df=df)
     elif tool is None:
-        return organize(
+        return handle_basic_chat_response(
             message=message,
             conversation_id=conversation_id,
             conversation_history=conversation_history,
             persona=persona)
     else:
         return None
-
-

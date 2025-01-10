@@ -75,6 +75,4 @@ beautifulsoup4~=4.12.3
 redis~=5.2.1
 scipy~=1.14.1
 google-api-python-client~=2.156.0
-selenium~=4.27.1
-webdriver-manager~=4.0.2
 gevent~=24.11.1
