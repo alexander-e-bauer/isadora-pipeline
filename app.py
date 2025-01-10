@@ -6,13 +6,13 @@ import urllib3
 from flask import Flask, request, make_response, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
-import eventlet
+from gevent import monkey
+monkey.patch_all()
 from werkzeug.serving import WSGIRequestHandler
 
 from xyz.modules.llm.llm_blueprint import init_app as init_llm_bp
 from xyz.modules.llm.embedding_tools.embedding_model import read_embedding
 
-eventlet.monkey_patch(thread=False)
 sys.setrecursionlimit(3000)
 
 from xyz.modules.llm import embedding_tool
