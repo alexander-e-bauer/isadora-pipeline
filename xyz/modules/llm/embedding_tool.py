@@ -10,7 +10,8 @@ logger = config.logger
 OAI = config.OAI
 search_df = pd.DataFrame()
 
-browser_service = BrowserService()
+def get_browser_service():
+    return BrowserService.get_instance()
 
 
 def initialize_code_embeddings(update=False):
@@ -136,16 +137,14 @@ def handle_embedding_chat_response(message, conversation_id, conversation_histor
 
 
 def process_chat_request(data, conversation_history, df: pd.DataFrame = None):
-    """Main entry point for processing chat requests"""
     print(data)
     message = data.get('message', '')
-    conversation_id = data.get('conversationId', 'default')
     function = data.get('function', '')
-    window_mode = data.get('window_mode', 'default')
-    window_content = data.get('current_window_content', '')
+    conversation_id = data.get('conversationId', 'default')
 
-    # Handle browser navigation commands
+    # Get browser service instance when needed
     if message.lower().startswith(('go to ', 'navigate to ', 'open ')):
+        browser_service = get_browser_service()
         url = message.split(' ', 2)[-1].strip()
         try:
             result = browser_service.execute_command('navigate_to', url)

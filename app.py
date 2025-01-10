@@ -22,9 +22,6 @@ import config
 OAI = config.OAI
 logger = config.logger
 
-# Initialize browser service with the VM URL
-browser_service = BrowserService()
-
 
 def ensure_directory_exists(directory):
     if not os.path.exists(directory):
@@ -124,6 +121,10 @@ app.config.update(
     BROWSER_SERVICE_URL=os.getenv('BROWSER_SERVICE_URL'),
     BROWSER_SERVICE_API_KEY=os.getenv('BROWSER_SERVICE_API_KEY')
 )
+
+with app.app_context():
+    browser_service = BrowserService.get_instance()
+    browser_service.initialize_with_app(app)
 
 df = embedding_tool.initialize_code_embeddings()
 

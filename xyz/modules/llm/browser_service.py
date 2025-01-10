@@ -1,28 +1,25 @@
+# browser_service.py
 import os
 
-import requests
 from flask import current_app
 
 
 class BrowserService:
+    _instance = None
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
     def __init__(self):
-        self.base_url = os.getenv('BROWSER_SERVICE_URL')
-        current_app.config.update(
-            BROWSER_SERVICE_URL=self.base_url)
+        # Move the config update to a separate method
+        self.initialized = False
 
-    def start_browser(self):
-        try:
-            response = requests.post(f"{self.base_url}/browser/start")
-            return response.json()
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
-
-    def navigate_to(self, url):
-        try:
-            response = requests.post(
-                f"{self.base_url}/browser/navigate",
-                json={"url": url}
+    def initialize_with_app(self, app):
+        if not self.initialized:
+            app.config.update(
+                BROWSER_SERVICE_URL=os.getenv('BROWSER_SERVICE_URL')
             )
-            return response.json()
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+            self.initialized = True
