@@ -24,9 +24,16 @@ class BrowserController:
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.binary_location = os.environ.get("GOOGLE_CHROME_PATH", "/app/.chrome/chrome/chrome")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--remote-debugging-port=9222")
 
-            service = Service(os.environ.get("CHROMEDRIVER_PATH", "/app/.chromedriver/bin/chromedriver"))
+            # Using the new Chrome-for-testing paths
+            chrome_binary = "/app/.chrome-for-testing/chrome-linux64/chrome"
+            chromedriver_path = "/app/.chrome-for-testing/chromedriver-linux64/chromedriver"
+
+            chrome_options.binary_location = chrome_binary
+
+            service = Service(executable_path=chromedriver_path)
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             return {"status": "success", "message": "Browser started"}
 
