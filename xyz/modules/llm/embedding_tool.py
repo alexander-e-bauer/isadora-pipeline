@@ -154,7 +154,7 @@ def process_chat_request(data, conversation_history, df: pd.DataFrame = None, br
 
         try:
             logger.debug(f"Attempting to navigate to URL: {url}")
-            result = browser_service.execute_command('navigate_to', url)
+            result = browser_service.navigate_to_url(url)
             logger.info(f"Successfully navigated to {url}.")
             return jsonify({
                 "response": f"Navigated to {url}",
