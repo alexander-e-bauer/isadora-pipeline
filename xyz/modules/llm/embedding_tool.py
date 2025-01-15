@@ -136,7 +136,7 @@ def handle_embedding_chat_response(message, conversation_id, conversation_histor
         return jsonify({"error": f"An error occurred while processing your request: {str(e)}"}), 500
 
 
-def process_chat_request(data, conversation_history, df: pd.DataFrame = None):
+def process_chat_request(data, conversation_history, df: pd.DataFrame = None, browser_service=None):
     logger.info("Processing chat request.")
     logger.debug(f"Request data: {data}")
 
@@ -150,7 +150,6 @@ def process_chat_request(data, conversation_history, df: pd.DataFrame = None):
     # Handle browser navigation requests based on message content
     if message.lower().startswith(('go to ', 'navigate to ', 'open ')):
         logger.info("Browser navigation command detected in the message.")
-        browser_service = get_browser_service()
         url = message.split(' ', 2)[-1].strip()
 
         try:

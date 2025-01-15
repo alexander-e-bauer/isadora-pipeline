@@ -1,6 +1,6 @@
 # browser_service.py
 import os
-
+import requests
 from flask import current_app
 
 
@@ -14,12 +14,53 @@ class BrowserService:
         return cls._instance
 
     def __init__(self):
-        # Move the config update to a separate method
         self.initialized = False
+        self.base_url = None
 
     def initialize_with_app(self, app):
+        """
+        Initialize the service with Flask app configuration
+        """
         if not self.initialized:
             app.config.update(
-                BROWSER_SERVICE_URL=os.getenv('BROWSER_SERVICE_URL')
+                BROWSER_SERVICE_URL=os.getenv('BROWSER_SERVICE_URL', 'https://isadora.ai')
             )
+            self.base_url = app.config['BROWSER_SERVICE_URL']
             self.initialized = True
+
+    def start_browser(self):
+        """
+        Interacts with the /api/browser/start endpoint at the backend
+        """
+        try:
+            response = requests.post(f"{self.base_url}/api/browser/start")
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            current_app.logger.error(f"Failed to start browser: {e}")
+            return {"status": "error", "message": str(e)}
+
+    def navigate_to_url(self, url):
+        """
+        Interacts with the /api/browser/navigate endpoint to navigate to a URL
+        """
+        try:
+            data = {"url": url}
+            response = requests.post(f"{self.base_url}/api/browser/navigate", json=data)
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            current_app.logger.error(f"Failed to navigate to URL {url}: {e}")
+            return {"status": "error", "message": str(e)}
+
+    def check_status(self):
+        """
+        Interacts with the /api/browser/status endpoint to get browser status
+        """
+        try:
+            response = requests.get(f"{self.base_url}/api/browser/status")
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            current_app.logger.error(f"Failed to get browser status: {e}")
+            return {"status": "error", "message": str(e)}

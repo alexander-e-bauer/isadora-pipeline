@@ -185,7 +185,7 @@ def chat():
         logger.debug(f"Request data: {data}")
 
         logger.info("Processing chat request with embedding_tool")
-        result = embedding_tool.process_chat_request(data, conversation_history=conversation_history, df=df)
+        result = embedding_tool.process_chat_request(data, conversation_history=conversation_history, df=df, browser_service=browser_service)
         logger.debug(f"Chat processing result: {result}")
 
         response = make_response(result)
