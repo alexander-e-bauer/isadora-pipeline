@@ -49,6 +49,8 @@ ssl_context = create_ssl_context()
 conversation_history = {}
 
 app = Flask(__name__)
+app.logger.handlers = logger.handlers
+app.logger.setLevel(logger.level)
 
 WSGIRequestHandler.timeout = 600
 

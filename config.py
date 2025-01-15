@@ -5,24 +5,34 @@ import logging
 
 dotenv.load_dotenv()
 
-# Create a file handler that logs debug and higher level messages to a file
+import logging
+import sys
+
+# Create a logger named 'logfile'
+logger = logging.getLogger('logfile')
+
+# Set the logger level to DEBUG to capture all levels of logs
+logger.setLevel(logging.DEBUG)
+
+# Add a StreamHandler (console) to log at DEBUG level
+console_handler = logging.StreamHandler(sys.stdout)  # Use `sys.stdout` for compatibility with Heroku
+console_handler.setLevel(logging.DEBUG)  # Log DEBUG and above to console
+
+# Add a FileHandler to log at DEBUG level to a file
 file_handler = logging.FileHandler('debug.log')
-file_handler.setLevel(logging.DEBUG)
+file_handler.setLevel(logging.DEBUG)  # Log DEBUG and above to file
 
-# Create a console handler with a higher log level
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.ERROR)
-
+# Define a log format
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-# Apply the formatter to the handlers
-file_handler.setFormatter(formatter)
+# Apply the formatter to both console and file handlers
 console_handler.setFormatter(formatter)
+file_handler.setFormatter(formatter)
 
-logger = logging.getLogger('logfile')
-logger.setLevel(logging.DEBUG)  # This sets the logger to handle all messages DEBUG and above
-logger.addHandler(file_handler)
+# Add handlers to the logger
 logger.addHandler(console_handler)
+logger.addHandler(file_handler)
+
 
 
 def log(msg):
