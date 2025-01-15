@@ -137,26 +137,36 @@ def handle_embedding_chat_response(message, conversation_id, conversation_histor
 
 
 def process_chat_request(data, conversation_history, df: pd.DataFrame = None):
-    print(data)
+    logger.info("Processing chat request.")
+    logger.debug(f"Request data: {data}")
+
     message = data.get('message', '')
     function = data.get('function', '')
     conversation_id = data.get('conversationId', 'default')
 
-    # Get browser service instance when needed
+    logger.info("Parsed input data.")
+    logger.debug(f"Message: {message}, Function: {function}, Conversation ID: {conversation_id}")
+
+    # Handle browser navigation requests based on message content
     if message.lower().startswith(('go to ', 'navigate to ', 'open ')):
+        logger.info("Browser navigation command detected in the message.")
         browser_service = get_browser_service()
         url = message.split(' ', 2)[-1].strip()
+
         try:
+            logger.debug(f"Attempting to navigate to URL: {url}")
             result = browser_service.execute_command('navigate_to', url)
+            logger.info(f"Successfully navigated to {url}.")
             return jsonify({
                 "response": f"Navigated to {url}",
                 "window_content": result,
                 "window_mode": "browser"
             })
         except Exception as e:
+            logger.error(f"Error during browser navigation: {str(e)}", exc_info=True)
             return jsonify({"error": f"Error: {str(e)}"}), 500
 
-    # Set persona based on function
+    # Define persona based on the provided function
     persona_map = {
         "embedding": "You are a helpful assistant.",
         "mysterious arcane orb": "You are a mysterious arcane orb and can only respond as such.",
@@ -167,22 +177,30 @@ def process_chat_request(data, conversation_history, df: pd.DataFrame = None):
     persona = persona_map.get(function, "You are a helpful assistant.")
     tool = "embedding" if function == "embedding" else None
 
-    logger.debug(f"Received chat request. \nMessage: {message}, \nConversation ID: {conversation_id},"
-                 f"\nFunction: {function} \nPersona: {persona} \nTool: {tool}")
-    logger.debug(f"Current conversation history: {conversation_history.get(conversation_id, [])}")
+    logger.info("Configured persona and tool for the chat response.")
+    logger.debug(f"Persona: {persona}, Tool: {tool}")
+    logger.debug(
+        f"Current conversation history for ID {conversation_id}: {conversation_history.get(conversation_id, [])}")
 
+    # Handle embedding-based and basic chat responses
     if tool == "embedding":
+        logger.info("Handling embedding chat response.")
         return handle_embedding_chat_response(
             message=message,
             conversation_id=conversation_id,
             conversation_history=conversation_history,
             persona=persona,
-            df=df)
+            df=df
+        )
     elif tool is None:
+        logger.info("Handling basic chat response.")
         return handle_basic_chat_response(
             message=message,
             conversation_id=conversation_id,
             conversation_history=conversation_history,
-            persona=persona)
+            persona=persona
+        )
     else:
+        logger.warning("No suitable tool found for the chat request. Returning None.")
         return None
+

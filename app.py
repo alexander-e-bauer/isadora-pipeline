@@ -180,23 +180,38 @@ def handle_preflight():
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
+        logger.info("Received chat request")
         data = request.json
+        logger.debug(f"Request data: {data}")
+
+        logger.info("Processing chat request with embedding_tool")
         result = embedding_tool.process_chat_request(data, conversation_history=conversation_history, df=df)
+        logger.debug(f"Chat processing result: {result}")
+
         response = make_response(result)
         origin = request.headers.get('Origin')
+        logger.debug(f"Request origin: {origin}")
+
         if origin in ALLOWED_ORIGINS:
+            logger.info(f"Origin {origin} is allowed. Adding CORS headers.")
             response.headers.update({
                 'Access-Control-Allow-Origin': origin,
                 'Access-Control-Allow-Credentials': 'true'
             })
+        else:
+            logger.warning(f"Origin {origin} is not in allowed origins.")
+
         return response
     except Exception as e:
-        logger.error(f"Chat error: {str(e)}")
+        logger.error(f"Chat error: {str(e)}", exc_info=True)
+
         error_response = jsonify({
             "error": str(e),
             "message": "Failed to process chat request"
         })
         error_response.status_code = 500
+
+        logger.debug(f"Error response: {error_response.get_json()}")
         return error_response
 
 
