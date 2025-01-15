@@ -22,7 +22,7 @@ import config
 OAI = config.OAI
 logger = config.logger
 
-x = 100
+
 
 def ensure_directory_exists(directory):
     if not os.path.exists(directory):
@@ -59,15 +59,10 @@ ALLOWED_ORIGINS = [
     'https://isadora-f5fbebf38bc6.herokuapp.com',
     'https://isadora-v2-74e5a1b97f07.herokuapp.com',
     'https://34.16.120.105',
-    'http://34.16.120.105',  # Add HTTP version
-    'https://isadora.ai',
-    'http://localhost:3000',
-    '*'  # During development/testing only
+    'https://isadora.ai'
 ]
 
 
-# Updated CORS configuration with explicit options
-# Replace the complex CORS configuration with a simpler one
 CORS(app,
      resources={r"/*": {"origins": ALLOWED_ORIGINS}},
      supports_credentials=True,
