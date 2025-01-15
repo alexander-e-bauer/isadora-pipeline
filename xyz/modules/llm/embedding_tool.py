@@ -137,25 +137,29 @@ def handle_embedding_chat_response(message, conversation_id, conversation_histor
 
 
 def process_chat_request(data, conversation_history, df: pd.DataFrame = None, browser_service=None):
-    logger.info("Processing chat request.")
-    logger.debug(f"Request data: {data}")
-
     message = data.get('message', '')
     function = data.get('function', '')
     conversation_id = data.get('conversationId', 'default')
+    window_mode = data.get('windowMode', 'browser')
+    window_content = data.get('windowContent', '')
 
-    logger.info("Parsed input data.")
-    logger.debug(f"Message: {message}, Function: {function}, Conversation ID: {conversation_id}")
+    logger.info(f"3: Parsed input data:\n"
+                f"message: {message}\n"
+                f"function: {function}\n"
+                f"conversation_id: {conversation_id}\n"
+                f"window_mode: {window_mode}\n"
+                f"window_content: {window_content}\n\n")
 
     # Handle browser navigation requests based on message content
     if message.lower().startswith(('go to ', 'navigate to ', 'open ')):
-        logger.info("Browser navigation command detected in the message.")
+        logger.info("3b: Browser navigation command detected in the message.")
         url = message.split(' ', 2)[-1].strip()
+        logger.info(f"Url Identified: {url} \n")
 
         try:
-            logger.debug(f"Attempting to navigate to URL: {url}")
+            logger.debug(f"4b: Attempting to navigate to URL: {url}")
             result = browser_service.navigate_to_url(url)
-            logger.info(f"Successfully navigated to {url}.")
+            logger.info(f"6b: Successfully navigated to {url}.")
             return jsonify({
                 "response": f"Navigated to {url}",
                 "window_content": result,

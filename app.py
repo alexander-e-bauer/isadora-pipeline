@@ -182,11 +182,11 @@ def handle_preflight():
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
-        logger.info("Received chat request")
+        logger.info("1: Received chat request")
         data = request.json
-        logger.debug(f"Request data: {data}")
+        logger.debug(f"Request data: {data}\n")
 
-        logger.info("Processing chat request with embedding_tool")
+        logger.info("2: Processing chat request with embedding_tool")
         result = embedding_tool.process_chat_request(data, conversation_history=conversation_history, df=df, browser_service=browser_service)
         logger.debug(f"Chat processing result: {result}")
 
@@ -220,13 +220,14 @@ def chat():
 # Socket event handlers
 @socketio.on('connect')
 def handle_connect():
-    logger.info(f"Client connected: {request.sid}")
+    #logger.info(f"Client connected: {request.sid}")
     emit('connect', {'status': 'connected', 'sid': request.sid})
 
 
 @socketio.on('disconnect')
 def handle_disconnect(data=None):
-    logger.info(f"Client disconnected: {request.sid}")
+    #logger.info(f"Client disconnected: {request.sid}")
+    x = 100
 
 
 @socketio.on('browse')

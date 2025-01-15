@@ -3,6 +3,9 @@ import os
 import requests
 from flask import current_app
 
+import config
+logger = config.logger
+
 
 class BrowserService:
     _instance = None
@@ -47,10 +50,12 @@ class BrowserService:
         try:
             data = {"url": url}
             response = requests.post(f"{self.base_url}/api/browser/navigate", json=data)
+            logger.info(f"5b: Request posted to VM\nResponse: {response}")
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
             current_app.logger.error(f"Failed to navigate to URL {url}: {e}")
+            logger.error(f"5b: Failed to start browser: {e}")
             return {"status": "error", "message": str(e)}
 
     def check_status(self):
