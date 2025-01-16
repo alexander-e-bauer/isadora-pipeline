@@ -8,15 +8,6 @@ PURPLE=$(tput setaf 5 2>/dev/null || echo "") # Purple text
 GRAY=$(tput setaf 8 2>/dev/null || echo "")  # Gray text
 RESET=$(tput sgr0 2>/dev/null || echo "")   # Reset to default colors
 
-# Function to display a loading bar
-loading_bar() {
-  for _ in {1..10}; do
-    echo -n "."
-    sleep 0.2
-  done
-  echo ""
-}
-
 # Function to print step messages
 print_step() {
   local step_msg=$1
@@ -42,26 +33,22 @@ print_separator
 # Step 1: Staging changes
 print_step "1. Staging all changes..."
 git add .
-loading_bar
 print_success "All changes staged successfully!"
-
+print_separator
 # Step 2: Reading commit message
 print_step "2. Prompting for commit message..."
 
 commit_message="Update"
-loading_bar
 print_success "Commit message set: '${commit_message}'"
-
+print_separator
 # Step 3: Committing changes
 print_step "3. Committing changes with message: '${commit_message}'..."
 git commit -m "$commit_message"
-loading_bar
 print_success "Changes committed successfully!"
-
+print_separator
 # Step 4: Pushing changes to Heroku
 print_step "4. Pushing changes to Heroku (https://isadora-v2-74e5a1b97f07.herokuapp.com/)..."
 git push heroku master
-loading_bar
 print_success "Changes pushed successfully to Heroku!"
 
 # End script
