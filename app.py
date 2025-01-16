@@ -181,6 +181,9 @@ def handle_preflight():
     return response
 
 
+import requests
+
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
@@ -189,8 +192,24 @@ def chat():
         logger.debug(f"Request data: {data}\n")
 
         logger.info("2: Processing chat request with embedding_tool")
-        result = embedding_tool.process_chat_request(data, conversation_history=conversation_history, df=df, browser_service=browser_service)
+        result = embedding_tool.process_chat_request(data, conversation_history=conversation_history, df=df,
+                                                     browser_service=browser_service)
         logger.debug(f"Chat processing result: {result}")
+
+        # API call to update DynamicWindow after processing the message
+        try:
+            logger.info("3: Making API call to update DynamicWindow data")
+            update_payload = {
+                "dynamicWindowData": result.get("dynamic_window_data", {})
+            }
+            update_response = requests.post(
+                "https://isadora-v2-74e5a1b97f07.herokuapp.com/api/browser/content",
+                json=update_payload
+            )
+            logger.debug(f"DynamicWindow update response status: {update_response.status_code}")
+            logger.debug(f"DynamicWindow update response content: {update_response.text}")
+        except Exception as api_exception:
+            logger.error(f"Failed to update DynamicWindow data: {str(api_exception)}", exc_info=True)
 
         response = make_response(result)
         origin = request.headers.get('Origin')
@@ -217,6 +236,7 @@ def chat():
 
         logger.debug(f"Error response: {error_response.get_json()}")
         return error_response
+
 
 
 @app.route('/api/browser/content', methods=['GET'])

@@ -154,7 +154,7 @@ def process_chat_request(data, conversation_history, df: pd.DataFrame = None, br
     if message.lower().startswith(('go to ', 'navigate to ', 'open ')):
         logger.info("3b: Browser navigation command detected in the message.")
         url = message.split(' ', 2)[-1].strip()
-        logger.info(f"Url Identified: {url} \n")
+        logger.info(f"URL Identified: {url} \n")
 
         try:
             logger.debug(f"4b: Attempting to navigate to URL: {url}")
