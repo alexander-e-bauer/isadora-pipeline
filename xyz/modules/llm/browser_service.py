@@ -63,6 +63,7 @@ class BrowserService:
         Interacts with the /api/browser/content endpoint to retrieve webpage content.
         """
         try:
+            response_ = requests.get(f"{self.base_url}/api/browser/start")
             response = requests.get(f"{self.base_url}/api/browser/content")
             response.raise_for_status()
             return response.json()
