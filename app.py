@@ -199,7 +199,7 @@ def chat():
         # API call to update DynamicWindow after processing the message
         try:
             logger.info("7b: Making API call to update DynamicWindow data")
-            update_response = requests.post(
+            update_response = requests.get(
                 "https://isadora-v2-74e5a1b97f07.herokuapp.com/api/browser/content"
             )
             logger.debug(f"DynamicWindow update response status: {update_response.status_code}")
