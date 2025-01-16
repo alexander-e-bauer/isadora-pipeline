@@ -88,7 +88,7 @@ socketio_app = SocketIO(
 )
 
 # VM Socket.IO Integration
-vm_socket = socketio.Client()
+vm_socket = socketio.Client(reconnection=True, reconnection_attempts=5, reconnection_delay=2)
 
 
 # Flask configuration
