@@ -58,6 +58,18 @@ class BrowserService:
             logger.error(f"5b: Failed to start browser: {e}")
             return {"status": "error", "message": str(e)}
 
+    def get_page_content(self):
+        """
+        Interacts with the /api/browser/content endpoint to retrieve webpage content.
+        """
+        try:
+            response = requests.get(f"{self.base_url}/api/browser/content")
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as e:
+            current_app.logger.error(f"Failed to get page content: {e}")
+            return {"status": "error", "message": str(e)}
+
     def check_status(self):
         """
         Interacts with the /api/browser/status endpoint to get browser status
