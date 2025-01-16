@@ -60,7 +60,9 @@ ALLOWED_ORIGINS = [
     'https://isadora-f5fbebf38bc6.herokuapp.com',
     'https://isadora-v2-74e5a1b97f07.herokuapp.com',
     'https://34.16.120.105',
-    'https://isadora.ai'
+    'https://isadora.ai',
+    'https://73.18.165.209',
+    'https://64.44.118.215',
 ]
 
 
