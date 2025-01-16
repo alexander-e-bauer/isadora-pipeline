@@ -1,3 +1,4 @@
+# app.py hosted on heroku at https://isadora-v2-74e5a1b97f07.herokuapp.com
 import os
 import sys
 import tempfile
@@ -7,7 +8,7 @@ from flask import Flask, request, make_response, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 from gevent import monkey
-
+import socketio
 monkey.patch_all()
 from werkzeug.serving import WSGIRequestHandler
 
@@ -73,7 +74,7 @@ CORS(app,
 
 
 # Configure SocketIO with explicit CORS settings
-socketio = SocketIO(
+socketio_app = SocketIO(
     app,
     cors_allowed_origins=ALLOWED_ORIGINS,
     async_mode='gevent',
@@ -85,6 +86,10 @@ socketio = SocketIO(
     cookie=False,
     cors_credentials=True
 )
+
+# VM Socket.IO Integration
+vm_socket = socketio.Client()
+
 
 # Flask configuration
 app.config.update(
@@ -148,7 +153,7 @@ def navigate():
         logger.debug(f"Navigated to {url} with result: {result}")
 
         # Emit the result through socket.io
-        socketio.emit('window_update', {
+        socketio_app.emit('window_update', {
             'content': result,
             'mode': 'browser'
         })
@@ -212,20 +217,53 @@ def chat():
         return error_response
 
 
+
+@vm_socket.on('connect')
+def on_vm_connect():
+    logger.info("Connected to the VM's Socket.IO server.")
+
+@vm_socket.on('disconnect')
+def on_vm_disconnect():
+    logger.info("Disconnected from the VM's Socket.IO server.")
+
+@vm_socket.on('window_update')
+def handle_vm_window_update(data):
+    logger.debug(f"Received window_update from VM: {data}")
+    vm_socket.emit('window_update', data)
+    logger.debug(f"Forwarded window_update to frontend: {data}")
+
+try:
+    vm_socket.connect('https://isadora.ai')  # Replace with the VM's Socket.IO URL
+    logger.info("Successfully connected to the VM's Socket.IO server.")
+except Exception as e:
+    logger.error(f"Failed to connect to the VM's Socket.IO server: {e}")
+
+
+with app.app_context():
+    browser_service = BrowserService.get_instance()
+    browser_service.initialize_with_app(app)
+
+
+
 # Socket event handlers
-@socketio.on('connect')
+@socketio_app.on('connect')
 def handle_connect():
     #logger.info(f"Client connected: {request.sid}")
     emit('connect', {'status': 'connected', 'sid': request.sid})
 
 
-@socketio.on('disconnect')
+@socketio_app.on('disconnect')
 def handle_disconnect(data=None):
     #logger.info(f"Client disconnected: {request.sid}")
     x = 100
 
+@socketio_app.on('window_update', namespace='/')
+def handle_window_update(data):
+    # Re-emit the event to the frontend
+    emit('window_update', data, broadcast=True)
+    logger.debug(f"Window update event: {data}")
 
-@socketio.on('browse')
+@socketio_app.on('browse')
 def handle_browse(data):
     url = data.get('url')
     try:
@@ -236,7 +274,7 @@ def handle_browse(data):
         socketio.emit('error', {'message': f'Failed to browse: {str(e)}'})
 
 
-@socketio.on('typing')
+@socketio_app.on('typing')
 def handle_typing(data):
     try:
         emit('typing', data, broadcast=True, include_self=False)
@@ -245,7 +283,7 @@ def handle_typing(data):
         emit('error', {'message': 'Failed to broadcast typing status'})
 
 
-@socketio.on('stop_typing')
+@socketio_app.on('stop_typing')
 def handle_stop_typing(data):
     try:
         emit('stop_typing', data, broadcast=True, include_self=False)
@@ -254,13 +292,13 @@ def handle_stop_typing(data):
         emit('error', {'message': 'Failed to broadcast stop typing status'})
 
 
-@socketio.on_error()
+@socketio_app.on_error()
 def error_handler(e):
     logger.error(f"SocketIO error: {e}")
     return {"error": str(e)}
 
 
-@socketio.on_error_default
+@socketio_app.on_error_default
 def default_error_handler(e):
     logger.error(f"SocketIO default error: {e}")
     return {"error": str(e)}
@@ -291,7 +329,7 @@ if __name__ == '__main__':
     ensure_directory_exists(EMBEDDINGS_DIR)
 
     if config.Config.production:
-        socketio.run(
+        socketio_app.run(
             app,
             host='0.0.0.0',
             port=int(os.environ.get('PORT', 5000)),
@@ -301,7 +339,7 @@ if __name__ == '__main__':
             allow_unsafe_werkzeug=True
         )
     else:
-        socketio.run(
+        socketio_app.run(
             app,
             host='0.0.0.0',
             port=5000,
