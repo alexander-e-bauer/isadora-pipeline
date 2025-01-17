@@ -47,7 +47,7 @@ git commit -m "$commit_message"
 print_success "Changes committed successfully!"
 print_separator
 # Step 4: Pushing changes to Heroku
-print_step "4. Pushing changes to Heroku (https://isadora-v2-74e5a1b97f07.herokuapp.com/)..."
+print_step "4. Pushing changes to Heroku (https://io.isadora.ai)..."
 git push heroku master
 print_success "Changes pushed successfully to Heroku!"
 
