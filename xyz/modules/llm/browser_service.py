@@ -84,7 +84,7 @@ class BrowserService:
         try:
             response = requests.get(f"{self.base_url}/api/browser/status")
             response.raise_for_status()
-            return response.json()
+            return
         except requests.RequestException as e:
             current_app.logger.error(f"Failed to get browser status: {e}")
             return {"status": "error", "message": str(e)}

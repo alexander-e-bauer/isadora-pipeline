@@ -193,6 +193,12 @@ def chat():
         logger.info("2: Processing chat request with embedding_tool")
         result = embedding_tool.process_chat_request(data, conversation_history=conversation_history, df=df,
                                                      browser_service=browser_service)
+        # Emit the result through socket.io
+        socketio_app.emit('window_update', {
+            'content': result,
+            'mode': 'browser'
+        })
+
         logger.debug(f"Chat processing result: {result}")
 
         response = make_response(result)
