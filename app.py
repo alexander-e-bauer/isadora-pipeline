@@ -57,10 +57,10 @@ WSGIRequestHandler.timeout = 600
 
 # Explicitly define allowed origins
 ALLOWED_ORIGINS = [
-    'https://isadora-f5fbebf38bc6.herokuapp.com',
-    'https://isadora-v2-74e5a1b97f07.herokuapp.com',
     'https://34.16.120.105',
     'https://isadora.ai',
+    'https://io.isadora.ai',
+    'https://chat.isadora.ai',
     'https://73.18.165.209',
     'https://64.44.118.215',
 ]
@@ -195,17 +195,6 @@ def chat():
         result = embedding_tool.process_chat_request(data, conversation_history=conversation_history, df=df,
                                                      browser_service=browser_service)
         logger.debug(f"Chat processing result: {result}")
-
-        # API call to update DynamicWindow after processing the message
-        try:
-            logger.info("7b: Making API call to update DynamicWindow data")
-            update_response = requests.get(
-                "https://isadora-v2-74e5a1b97f07.herokuapp.com/api/browser/content"
-            )
-            logger.debug(f"DynamicWindow update response status: {update_response.status_code}")
-            logger.debug(f"DynamicWindow update response content: {update_response.text}")
-        except Exception as api_exception:
-            logger.error(f"Failed to update DynamicWindow data: {str(api_exception)}", exc_info=True)
 
         response = make_response(result)
         origin = request.headers.get('Origin')
