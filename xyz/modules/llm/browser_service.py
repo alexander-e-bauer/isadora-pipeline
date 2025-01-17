@@ -6,7 +6,7 @@ from flask import current_app
 import config
 logger = config.logger
 from threading import Lock
-
+tgif = os.getenv("TGIF")
 lock = Lock()
 
 class BrowserService:
@@ -21,6 +21,7 @@ class BrowserService:
     def __init__(self):
         self.initialized = False
         self.base_url = None
+        self.auth_header = {"X-Heroku-Auth": tgif}
 
     def initialize_with_app(self, app):
         """
@@ -38,7 +39,7 @@ class BrowserService:
         Interacts with the /api/browser/start endpoint at the backend
         """
         try:
-            response = requests.post(f"{self.base_url}/api/browser/start")
+            response = requests.post(f"{self.base_url}/api/browser/start", headers=self.auth_header)
             response.raise_for_status()
             current_app.logger.debug(
                 f"5a: Start Request posted to VM\nResponse: {response}")
@@ -53,7 +54,7 @@ class BrowserService:
         """
         try:
             data = {"url": url}
-            response = requests.post(f"{self.base_url}/api/browser/navigate", json=data)
+            response = requests.post(f"{self.base_url}/api/browser/navigate", json=data, headers=self.auth_header)
             logger.info(f"5b: Request posted to VM\nResponse: {response.content}")
             response.raise_for_status()
             return response.json()
@@ -68,7 +69,7 @@ class BrowserService:
         """
         with lock:
             try:
-                response = requests.get(f"{self.base_url}/api/browser/content")
+                response = requests.get(f"{self.base_url}/api/browser/content", headers=self.auth_header)
                 current_app.logger.debug(
                     f"Fetching Web Content Request posted to VM\nResponse: {response.content}")
                 response.raise_for_status()
@@ -82,7 +83,7 @@ class BrowserService:
         Interacts with the /api/browser/status endpoint to get browser status
         """
         try:
-            response = requests.get(f"{self.base_url}/api/browser/status")
+            response = requests.get(f"{self.base_url}/api/browser/status", headers=self.auth_header)
             response.raise_for_status()
             return
         except requests.RequestException as e:
