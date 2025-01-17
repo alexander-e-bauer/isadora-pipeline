@@ -155,14 +155,14 @@ def process_chat_request(data, conversation_history, df: pd.DataFrame = None, br
         logger.info("3b: Browser navigation command detected in the message.")
         url = message.split(' ', 2)[-1].strip()
         logger.info(f"URL Identified: {url} \n")
-
         try:
             logger.debug(f"4b: Attempting to navigate to URL: {url}")
             result = browser_service.navigate_to_url(url)
+            response = browser_service.get_page_content()
             logger.info(f"6b: Successfully navigated to {url}.")
             return jsonify({
                 "response": f"Navigated to {url}",
-                "window_content": result,
+                "window_content": response,
                 "window_mode": "browser"
             })
         except Exception as e:
