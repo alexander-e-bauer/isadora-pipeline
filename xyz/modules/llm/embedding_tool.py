@@ -162,7 +162,7 @@ def process_chat_request(data, conversation_history, df: pd.DataFrame = None, br
             result = browser_service.check_status()
             if result:
                 logger.info(f"5b: Browser is not open. Attempting to reopen...")
-                browser_service.reopen()
+                browser_service.start_browser()
 
             result = browser_service.navigate_to_url(url)
 

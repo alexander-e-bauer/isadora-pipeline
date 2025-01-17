@@ -154,13 +154,13 @@ def navigate():
 
     try:
         result = browser_service.navigate_to(url)
-        logger.debug(f"Navigated to {url} with result: {result}")
 
         # Emit the result through socket.io
         socketio_app.emit('window_update', {
             'content': result,
             'mode': 'browser'
         })
+        logger.debug(f"Navigated to {url} with result: {result}\n\n Emitted to socket.io\n")
 
         return jsonify({"status": "success", "data": result})
     except Exception as e:
@@ -235,6 +235,11 @@ def fetch_page_content():
     Fetch webpage content from the VM and send it to the frontend via SocketIO.
     """
     logger.info("Request received to fetch webpage content.")
+
+    result = browser_service.check_status()
+    if result:
+        logger.info(f"5b: Browser is not open. Attempting to reopen...")
+        browser_service.start_browser()
 
     # Fetch content from the VM using browser_service
     content_response = browser_service.get_page_content()
