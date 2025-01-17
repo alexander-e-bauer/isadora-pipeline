@@ -183,9 +183,6 @@ def handle_preflight():
     return response
 
 
-import requests
-
-
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
