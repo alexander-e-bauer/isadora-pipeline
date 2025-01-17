@@ -65,8 +65,6 @@ class BrowserService:
         Interacts with the /api/browser/content endpoint to retrieve webpage content.
         """
         with lock:
-            if not self.driver:
-                return {"status": "error", "message": "Browser is not running"}
             try:
                 response = requests.get(f"{self.base_url}/api/browser/content")
                 response.raise_for_status()
