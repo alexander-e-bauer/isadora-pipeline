@@ -40,6 +40,8 @@ class BrowserService:
         try:
             response = requests.post(f"{self.base_url}/api/browser/start")
             response.raise_for_status()
+            current_app.logger.debug(
+                f"5a: Start Request posted to VM\nResponse: {response}")
             return response.json()
         except requests.RequestException as e:
             current_app.logger.error(f"Failed to start browser: {e}")
@@ -52,7 +54,7 @@ class BrowserService:
         try:
             data = {"url": url}
             response = requests.post(f"{self.base_url}/api/browser/navigate", json=data)
-            logger.info(f"5b: Request posted to VM\nResponse: {response}")
+            logger.info(f"5b: Request posted to VM\nResponse: {response.content}")
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
@@ -67,6 +69,8 @@ class BrowserService:
         with lock:
             try:
                 response = requests.get(f"{self.base_url}/api/browser/content")
+                current_app.logger.debug(
+                    f"Fetching Web Content Request posted to VM\nResponse: {response.content}")
                 response.raise_for_status()
                 return response.json()
             except requests.RequestException as e:
