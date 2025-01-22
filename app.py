@@ -228,40 +228,32 @@ def chat():
         return error_response
 
 
-
 @app.route('/api/browser/content', methods=['GET'])
 def fetch_page_content():
-    """
-    Fetch webpage content from the VM and send it to the frontend via SocketIO.
-    """
     logger.info("Request received to fetch webpage content.")
-
-    result = browser_service.check_status()
-    if result:
-        logger.info(f"5b: Browser is not open. Attempting to reopen...")
-        browser_service.start_browser()
 
     # Fetch content from the VM using browser_service
     content_response = browser_service.get_page_content()
-    logger.debug(f"Content response: {content_response}")
+    logger.debug(f"Content response from VM: {content_response}")
 
     if content_response.get("status") != "success":
         error_message = content_response.get("message", "Failed to retrieve page content")
         logger.error(f"Error fetching content from VM: {error_message}")
         return jsonify({"status": "error", "message": error_message}), 500
 
-    # Extract content and emit to frontend via SocketIO
+    # Extract content and emit to frontend via Socket.IO
     content = content_response.get("content", {})
     socketio_app.emit("window_update", {
         "content": {
-            "url": request.args.get("url", ""),  # Optional: Include the URL if available
-            "title": content.get("title"),
-            "html": content.get("html")
+            "html": content.get("html", ""),
+            "title": content.get("title", "")
         },
         "mode": "browser"
     })
 
-    logger.info(f"Emitting window_update event with content: {content}")
+    # Log the emitted data
+    logger.debug(f"Emitted window_update event with content: {content} and mode: browser")
+
     return jsonify({"status": "success", "content": content})
 
 

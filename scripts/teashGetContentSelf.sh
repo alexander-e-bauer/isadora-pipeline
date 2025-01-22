@@ -1,0 +1,1 @@
+curl -X GET http://io.isadora.ai/api/browser/content
