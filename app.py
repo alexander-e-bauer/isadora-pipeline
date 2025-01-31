@@ -275,9 +275,9 @@ def on_vm_disconnect():
 
 @vm_socket.on('window_update')
 def handle_vm_window_update(data):
-    logger.debug(f"Received window_update from VM: {data}")
+    logger.debug(f"Received window_update from VM: ")
     vm_socket.emit('window_update', data)
-    logger.debug(f"Forwarded window_update to frontend: {data}")
+    logger.debug(f"Forwarded window_update to frontend: ")
 
 try:
     vm_socket.connect('https://isadora.ai')  # Replace with the VM's Socket.IO URL
