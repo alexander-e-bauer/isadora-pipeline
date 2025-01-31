@@ -39,6 +39,12 @@ def log(msg):
     logger.debug(msg)
     print(msg)
 
+class DATABASE:
+    host = os.getenv('DB_HOST')
+    user = os.getenv('DB_USER')
+    password = os.getenv('DB_PASSWORD')
+    name = os.getenv('DB_NAME')
+
 
 class Config:
     """Base configuration variables."""

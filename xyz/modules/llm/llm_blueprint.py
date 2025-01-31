@@ -27,7 +27,7 @@ def get_completion(prompt, persona="You are a helpful assistant."):
     return result
 
 
-def get_completion(prompt, conversation_history, conversation_id: str, persona="You are a helpful assistant.",
+def get_completion_(prompt, conversation_history, conversation_id: str, persona="You are a helpful assistant.",
                    model="gpt-4o"):
     if conversation_id not in conversation_history:
         conversation_history[conversation_id] = []

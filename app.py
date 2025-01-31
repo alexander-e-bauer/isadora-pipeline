@@ -14,6 +14,7 @@ from werkzeug.serving import WSGIRequestHandler
 
 from xyz.modules.llm.llm_blueprint import init_app as init_llm_bp
 from xyz.modules.llm.browser_service import BrowserService
+from xyz.modules.database.fingerprints import fetch_fingerprints
 
 sys.setrecursionlimit(3000)
 
@@ -255,6 +256,12 @@ def fetch_page_content():
     logger.debug(f"Emitted window_update event with content: {content} and mode: browser")
 
     return jsonify({"status": "success", "content": content})
+
+
+@app.route("/fingerprints", methods=["GET"])
+def fingerprints():
+    data = fetch_fingerprints()
+    return {"fingerprints": data}
 
 
 

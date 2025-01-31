@@ -1,5 +1,6 @@
 import config
 import pandas as pd
+import pprint
 from flask import jsonify
 
 from xyz.modules.llm.embedding_tools import embedding_model, embedding_generator, embedding_search
@@ -137,6 +138,7 @@ def handle_embedding_chat_response(message, conversation_id, conversation_histor
 
 
 def process_chat_request(data, conversation_history, df: pd.DataFrame = None, browser_service=None):
+    pprint.pprint(data)
     message = data.get('message', '')
     function = data.get('function', '')
     conversation_id = data.get('conversationId', 'default')
