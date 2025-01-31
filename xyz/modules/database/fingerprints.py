@@ -30,5 +30,5 @@ def fetch_fingerprints():
         print(f"Error fetching from database: {e}")
         return []
 
-fingerprint = fetch_fingerprints()
-print(fingerprint)
+#fingerprint = fetch_fingerprints()
+#print(fingerprint)
