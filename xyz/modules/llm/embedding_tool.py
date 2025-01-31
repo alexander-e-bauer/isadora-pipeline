@@ -141,9 +141,9 @@ def process_chat_request(data, conversation_history, df: pd.DataFrame = None, br
     pprint.pprint(data)
     message = data.get('message', '')
     function = data.get('function', '')
-    conversation_id = data.get('conversationId', 'default')
-    window_mode = data.get('windowMode', 'browser')
-    window_content = data.get('windowContent', '')
+    conversation_id = data.get('conversation_id', '')
+    window_mode = data.get('window_mode', '')
+    window_content = data.get('current_window_content', '')
 
     logger.info(f"3: Parsed input data:\n"
                 f"message: {message}\n"
@@ -151,6 +151,9 @@ def process_chat_request(data, conversation_history, df: pd.DataFrame = None, br
                 f"conversation_id: {conversation_id}\n"
                 f"window_mode: {window_mode}\n"
                 f"window_content: {window_content}\n\n")
+
+
+
 
     # Handle browser navigation requests based on message content
     if message.lower().startswith(('go to ', 'navigate to ', 'open ')):
