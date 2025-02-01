@@ -2,6 +2,7 @@ import config
 import pandas as pd
 import pprint
 from flask import jsonify
+import json
 
 from xyz.modules.llm.embedding_tools import embedding_model, embedding_generator, embedding_search
 from xyz.modules.llm.embedding_tools.embedding_search import google
@@ -10,6 +11,22 @@ from xyz.modules.llm.browser_service import BrowserService
 logger = config.logger
 OAI = config.OAI
 search_df = pd.DataFrame()
+
+browser_tool_schema = {
+    "name": "navigate_to_url",
+    "description": "Navigate to a URL using the browser.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "url": {
+                "type": "string",
+                "description": "The URL to navigate to."
+            }
+        },
+        "required": ["url"]
+    }
+}
+
 
 def get_browser_service():
     return BrowserService.get_instance()
@@ -48,12 +65,27 @@ def process_basic_chat(conversation_history, user_input: str, conversation_id: s
                ] + conversation_history[conversation_id]
 
     try:
+        # Include the function schema in the API call
         completion = OAI.client.chat.completions.create(
             model=model,
-            messages=messages
+            messages=messages,
+            functions=[browser_tool_schema],  # Add the browser tool schema
+            function_call="auto"  # Let the model decide when to call the function
         )
-        output = completion.choices[0].message.content
 
+        # Check if the model wants to call a function
+        if completion.choices[0].finish_reason == "function_call":
+            function_call = completion.choices[0].message.function_call
+            logger.info(f"Function call detected: {function_call}")
+
+            # Handle the function call
+            if function_call["name"] == "navigate_to_url":
+                function_args = json.loads(function_call["arguments"])
+                url = function_args.get("url")
+                return handle_browser_navigation(url)
+
+        # Otherwise, return the model's response
+        output = completion.choices[0].message.content
         conversation_history[conversation_id].append({"role": "assistant", "content": output})
 
         print(f"\nCompletion: \nPrompt: {user_input}\nResult: {output}")
@@ -61,6 +93,30 @@ def process_basic_chat(conversation_history, user_input: str, conversation_id: s
     except Exception as e:
         logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
         raise
+
+
+
+def handle_browser_navigation(url: str):
+    """Handle the browser navigation request."""
+    try:
+        logger.info(f"Attempting to navigate to URL: {url}")
+        browser_service = get_browser_service()
+
+        if not browser_service.check_status():
+            logger.info("Browser is not open. Starting the browser...")
+            browser_service.start_browser()
+
+        result = browser_service.navigate_to_url(url)
+        logger.info(f"Successfully navigated to {url}.")
+        return jsonify({
+            "response": f"Navigated to {url}",
+            "window_content": result,
+            "window_mode": "browser"
+        })
+    except Exception as e:
+        logger.error(f"Error during browser navigation: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Error: {str(e)}"}), 500
+
 
 
 def process_embedding_enhanced_chat(conversation_history, user_input: str, df: pd.DataFrame, conversation_id: str,
@@ -85,15 +141,30 @@ def process_embedding_enhanced_chat(conversation_history, user_input: str, df: p
     logger.debug(f"Messages sent to API: {messages}")
 
     try:
-        output = OAI.client.chat.completions.create(
-            model='gpt-4o',
-            messages=messages
+        # Include the function schema in the API call
+        completion = OAI.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            functions=[browser_tool_schema],  # Add the browser tool schema
+            function_call="auto"  # Let the model decide when to call the function
         )
 
-        output = output.choices[0].message.content
+        # Check if the model wants to call a function
+        if completion.choices[0].finish_reason == "function_call":
+            function_call = completion.choices[0].message.function_call
+            logger.info(f"Function call detected: {function_call}")
+
+            # Handle the function call
+            if function_call["name"] == "navigate_to_url":
+                function_args = json.loads(function_call["arguments"])
+                url = function_args.get("url")
+                return handle_browser_navigation(url)
+
+        # Otherwise, return the model's response
+        output = completion.choices[0].message.content
         conversation_history[conversation_id].append({"role": "assistant", "content": output})
 
-        logger.debug(f"Updated conversation history: {conversation_history[conversation_id]}")
+        print(f"\nCompletion: \nPrompt: {user_input}\nResult: {output}")
         return output
     except Exception as e:
         logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
