@@ -1,4 +1,4 @@
-# browser_service.py
+# browser_service.py (Orchestrator)
 import os
 import requests
 from flask import current_app
@@ -64,21 +64,23 @@ class BrowserService:
             return {"status": "error", "message": str(e)}
 
 
-
-    def get_page_content(self):
+    def get_page_content(self, socketio_app):
         """
         Interacts with the /api/browser/content endpoint to retrieve webpage content.
         """
-        with lock:
-            try:
-                response = requests.get(f"{self.base_url}/api/browser/content", headers=self.auth_header)
-                current_app.logger.debug(
-                    f"Fetching Web Content Request posted to VM\nResponse: {response.content}")
-                response.raise_for_status()
-                return response.json()
-            except requests.RequestException as e:
-                current_app.logger.error(f"Failed to get page content: {e}")
-                return {"status": "error", "message": str(e)}
+        try:
+            response = requests.get(f"{self.base_url}/api/browser/content", headers=self.auth_header)
+            response.raise_for_status()
+            content = response.json()
+            # Emit content to the frontend
+            socketio_app.emit('window_update', {
+                'content': content.get("content", {}),
+                'mode': 'browser'
+            })
+            return content
+        except requests.RequestException as e:
+            logger.error(f"Failed to get page content: {e}")
+            return {"status": "error", "message": str(e)}
 
     def check_status(self):
         """

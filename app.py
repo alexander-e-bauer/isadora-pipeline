@@ -145,6 +145,22 @@ def after_request(response):
     return response
 
 
+@socketio_app.on('browse')
+def handle_browse(data):
+    url = data.get('url')
+    try:
+        result = browser_service.navigate_to_url(url)
+        # Emit the result to update the frontend dynamically
+        socketio_app.emit('window_update', {
+            'content': result.get("page_info", {}),
+            'mode': 'browser'
+        })
+    except Exception as e:
+        logger.error(f"Browse error: {str(e)}")
+        socketio_app.emit('error', {'message': f'Failed to browse: {str(e)}'})
+
+
+
 @app.route('/api/browser/navigate', methods=['POST'])
 def navigate():
     data = request.json
@@ -234,7 +250,7 @@ def fetch_page_content():
     logger.info("Request received to fetch webpage content.")
 
     # Fetch content from the VM using browser_service
-    content_response = browser_service.get_page_content()
+    content_response = browser_service.get_page_content(socketio_app=socketio_app)
     logger.debug(f"Content response from VM: {content_response}")
 
     if content_response.get("status") != "success":

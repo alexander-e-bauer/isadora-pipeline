@@ -5,6 +5,7 @@ import pprint
 from flask import jsonify
 import json
 
+from app import socketio_app
 from xyz.modules.llm.embedding_tools import embedding_model, embedding_generator, embedding_search
 from xyz.modules.llm.embedding_tools.embedding_search import google
 from xyz.modules.llm.browser_service import BrowserService
@@ -21,17 +22,18 @@ def generate_dynamic_response(title: str, url: str, summary: str) -> str:
     if not title and not summary:
         return f"I navigated to {url}, but I couldn't find much information there."
 
-    # Construct the prompt for GPT
+    # Construct a more detailed prompt for GPT
     prompt = (
         f"I visited the website '{title}' at {url}. "
         f"Here's a summary of what I found: {summary}. "
-        "Please generate a conversational response for the user, summarizing this information naturally."
+        "If available, include additional relevant details from the page."
+        "Generate a conversational response for the user, summarizing this information naturally."
     )
 
     try:
         # Call OpenAI's chat completion API
         completion = OAI.client.chat.completions.create(
-            model="gpt-4o",  # Use the model defined in your setup
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant that generates conversational responses."},
                 {"role": "user", "content": prompt}
@@ -45,6 +47,7 @@ def generate_dynamic_response(title: str, url: str, summary: str) -> str:
     except Exception as e:
         logger.error(f"Error generating dynamic response with OpenAI: {str(e)}", exc_info=True)
         return "I encountered an error while generating a response. Please try again later."
+
 
 
 browser_tool_schema = {
@@ -193,8 +196,15 @@ def handle_browser_navigation(url: str):
             browser_service.start_browser()
 
         result = browser_service.navigate_to_url(url)
+
+        # Fetch detailed content after navigation
+        if result.get("status") == "success":
+            content_result = browser_service.get_page_content(socketio_app=socketio_app)
+            if content_result.get("status") == "success":
+                result["page_info"]["html"] = content_result["content"].get("html", "")
+                result["page_info"]["summary"] = content_result["content"].get("summary", "No summary available.")
+
         logger.info(f"Successfully navigated to {url}.")
-        print(f"!!!!! {result}")
         return result
 
     except Exception as e:
@@ -204,6 +214,7 @@ def handle_browser_navigation(url: str):
             "message": str(e),
             "status_code": 500
         }
+
 
 
 def process_embedding_enhanced_chat(conversation_history, user_input: str, df: pd.DataFrame, conversation_id: str,
