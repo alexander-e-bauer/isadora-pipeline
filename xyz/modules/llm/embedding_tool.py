@@ -20,7 +20,9 @@ browser_tool_schema = {
         "properties": {
             "url": {
                 "type": "string",
-                "description": "The URL to navigate to."
+                "format": "uri",
+                "pattern": "^https?://",
+                "description": "The full URL to navigate to (must include http/https)"
             }
         },
         "required": ["url"]
@@ -69,31 +71,44 @@ def process_basic_chat(conversation_history, user_input: str, conversation_id: s
         completion = OAI.client.chat.completions.create(
             model=model,
             messages=messages,
-            functions=[browser_tool_schema],  # Add the browser tool schema
-            function_call="auto"  # Let the model decide when to call the function
+            functions=[browser_tool_schema],
+            function_call="auto"
         )
 
+        response_message = completion.choices[0].message
+
         # Check if the model wants to call a function
-        if completion.choices[0].finish_reason == "function_call":
-            function_call = completion.choices[0].message.function_call
+        if response_message.function_call:
+            function_call = response_message.function_call
             logger.info(f"Function call detected: {function_call}")
 
             # Handle the function call
-            if function_call["name"] == "navigate_to_url":
-                function_args = json.loads(function_call["arguments"])
+            if function_call.name == "navigate_to_url":
+                function_args = json.loads(function_call.arguments)
                 url = function_args.get("url")
-                return handle_browser_navigation(url)
+                navigation_result = handle_browser_navigation(url)
 
-        # Otherwise, return the model's response
-        output = completion.choices[0].message.content
+                # Add function call response to conversation history
+                conversation_history[conversation_id].append({
+                    "role": "assistant",
+                    "content": f"Function call: Navigated to {url}",
+                    "function_call": function_call.model_dump()
+                })
+
+                return navigation_result
+
+        # Handle normal response
+        output = response_message.content
         conversation_history[conversation_id].append({"role": "assistant", "content": output})
 
-        print(f"\nCompletion: \nPrompt: {user_input}\nResult: {output}")
+        if print_message:
+            print(f"\nCompletion: \nPrompt: {user_input}\nResult: {output}")
+
         return output
+
     except Exception as e:
         logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
         raise
-
 
 
 def handle_browser_navigation(url: str):
