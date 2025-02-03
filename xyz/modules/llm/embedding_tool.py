@@ -12,6 +12,40 @@ logger = config.logger
 OAI = config.OAI
 search_df = pd.DataFrame()
 
+def generate_dynamic_response(title: str, url: str, summary: str) -> str:
+    """
+    Use OpenAI's GPT model to generate a conversational response dynamically
+    based on the retrieved webpage data.
+    """
+    if not title and not summary:
+        return f"I navigated to {url}, but I couldn't find much information there."
+
+    # Construct the prompt for GPT
+    prompt = (
+        f"I visited the website '{title}' at {url}. "
+        f"Here's a summary of what I found: {summary}. "
+        "Please generate a conversational response for the user, summarizing this information naturally."
+    )
+
+    try:
+        # Call OpenAI's chat completion API
+        completion = OAI.client.chat.completions.create(
+            model="gpt-4o",  # Use the model defined in your setup
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that generates conversational responses."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        # Extract and return the generated response
+        response = completion.choices[0].message.content.strip()
+        return response
+
+    except Exception as e:
+        logger.error(f"Error generating dynamic response with OpenAI: {str(e)}", exc_info=True)
+        return "I encountered an error while generating a response. Please try again later."
+
+
 browser_tool_schema = {
     "name": "navigate_to_url",
     "description": "Navigate to a URL using the browser.",
@@ -98,7 +132,19 @@ def process_basic_chat(conversation_history, user_input: str, conversation_id: s
                     }
                 })
 
-                return navigation_result
+                if navigation_result["status"] == "success":
+                    page_data = navigation_result["data"]
+
+                    # Dynamically craft a conversational response using OpenAI
+                    response = generate_dynamic_response(
+                        title=page_data.get("title"),
+                        url=page_data.get("url"),
+                        summary=page_data.get("summary")
+                    )
+                    return response
+                else:
+                    # Handle error case
+                    return f"Sorry, I couldn't navigate to {url}. Here's the error: {navigation_result['message']}"
 
         # Handle normal response
         output = response_message.content
@@ -112,6 +158,7 @@ def process_basic_chat(conversation_history, user_input: str, conversation_id: s
     except Exception as e:
         logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
         raise
+
 
 
 def handle_browser_navigation(url: str):
