@@ -92,7 +92,10 @@ def process_basic_chat(conversation_history, user_input: str, conversation_id: s
                 conversation_history[conversation_id].append({
                     "role": "assistant",
                     "content": f"Function call: Navigated to {url}",
-                    "function_call": function_call.model_dump()
+                    "function_call": {
+                        "name": function_call.name,
+                        "arguments": function_call.arguments
+                    }
                 })
 
                 return navigation_result
@@ -123,15 +126,19 @@ def handle_browser_navigation(url: str):
 
         result = browser_service.navigate_to_url(url)
         logger.info(f"Successfully navigated to {url}.")
-        return jsonify({
-            "response": f"Navigated to {url}",
-            "window_content": result,
-            "window_mode": "browser"
-        })
-    except Exception as e:
-        logger.error(f"Error during browser navigation: {str(e)}", exc_info=True)
-        return jsonify({"error": f"Error: {str(e)}"}), 500
+        return {
+            "status": "success" if result.ok else "error",
+            "message": result.text,
+            "status_code": result.status_code
+        }
 
+    except Exception as e:
+        logger.error(f"Navigation error: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "status_code": 500
+        }
 
 
 def process_embedding_enhanced_chat(conversation_history, user_input: str, df: pd.DataFrame, conversation_id: str,
