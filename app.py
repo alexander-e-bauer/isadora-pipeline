@@ -1,4 +1,4 @@
-# app.py hosted on heroku at https://isadora-v2-74e5a1b97f07.herokuapp.com
+# app.py (Orchestrator) hosted on heroku at https://isadora-v2-74e5a1b97f07.herokuapp.com
 import os
 import sys
 import tempfile
