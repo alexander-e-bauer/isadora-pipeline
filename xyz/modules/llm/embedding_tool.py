@@ -90,39 +90,47 @@ def process_basic_chat(conversation_history, user_input: str, conversation_id: s
                        system_input: str = 'You are a helpful assistant.',
                        model: str = "gpt-4o", streaming: bool = False,
                        print_message: bool = False) -> str:
-    """Process a basic chat interaction without embeddings"""
+    """
+    Process a basic chat interaction with dynamic handling for function calls.
+    """
+    # Initialize conversation history if not already present
     if conversation_id not in conversation_history:
         conversation_history[conversation_id] = []
 
+    # Add user input to conversation history
     conversation_history[conversation_id].append({"role": "user", "content": user_input})
 
+    # Prepare messages for the API call
     messages = [
-                   {"role": "system", "content": system_input},
-               ] + conversation_history[conversation_id]
+        {"role": "system", "content": system_input},
+    ] + conversation_history[conversation_id]
 
     try:
-        # Include the function schema in the API call
+        # Make the API call with function schema
         completion = OAI.client.chat.completions.create(
             model=model,
             messages=messages,
-            functions=[browser_tool_schema],
-            function_call="auto"
+            functions=[browser_tool_schema],  # Include any required function schemas here
+            function_call="auto"  # Allow the model to dynamically decide on function calls
         )
 
+        # Extract the response message
         response_message = completion.choices[0].message
 
         # Check if the model wants to call a function
-        if response_message.function_call:
+        if response_message.get("function_call"):
             function_call = response_message.function_call
             logger.info(f"Function call detected: {function_call}")
 
-            # Handle the function call
+            # Handle the function call dynamically
             if function_call.name == "navigate_to_url":
                 function_args = json.loads(function_call.arguments)
                 url = function_args.get("url")
+
+                # Perform the navigation
                 navigation_result = handle_browser_navigation(url)
 
-                # Add function call response to conversation history
+                # Add the function call response to conversation history
                 conversation_history[conversation_id].append({
                     "role": "assistant",
                     "content": f"Function call: Navigated to {url}",
@@ -132,22 +140,33 @@ def process_basic_chat(conversation_history, user_input: str, conversation_id: s
                     }
                 })
 
+                # Handle the navigation result
                 if navigation_result["status"] == "success":
-                    page_data = navigation_result["data"]
-
-                    # Dynamically craft a conversational response using OpenAI
+                    # Generate a dynamic response based on the navigation result
                     response = generate_dynamic_response(
-                        title=page_data.get("title"),
-                        url=page_data.get("url"),
-                        summary=page_data.get("summary")
+                        title=navigation_result.get("page_info", {}).get("title", "Website"),
+                        url=navigation_result.get("page_info", {}).get("url", url),
+                        summary=navigation_result.get("message", "No additional details available.")
                     )
+
+                    # Add the response to conversation history
+                    conversation_history[conversation_id].append({
+                        "role": "assistant",
+                        "content": response
+                    })
+
                     return response
                 else:
-                    # Handle error case
-                    return f"Sorry, I couldn't navigate to {url}. Here's the error: {navigation_result['message']}"
+                    # Handle navigation errors gracefully
+                    error_message = f"Sorry, I couldn't navigate to {url}. Here's the error: {navigation_result['message']}"
+                    conversation_history[conversation_id].append({
+                        "role": "assistant",
+                        "content": error_message
+                    })
+                    return error_message
 
-        # Handle normal response
-        output = response_message.content
+        # Handle normal (non-function-call) responses
+        output = response_message.get("content", "")
         conversation_history[conversation_id].append({"role": "assistant", "content": output})
 
         if print_message:
@@ -158,6 +177,7 @@ def process_basic_chat(conversation_history, user_input: str, conversation_id: s
     except Exception as e:
         logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
         raise
+
 
 
 
