@@ -118,7 +118,7 @@ def process_basic_chat(conversation_history, user_input: str, conversation_id: s
         response_message = completion.choices[0].message
 
         # Check if the model wants to call a function
-        if response_message.get("function_call"):
+        if response_message.function_call:
             function_call = response_message.function_call
             logger.info(f"Function call detected: {function_call}")
 
