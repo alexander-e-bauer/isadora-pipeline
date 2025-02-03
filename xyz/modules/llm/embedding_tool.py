@@ -126,11 +126,8 @@ def handle_browser_navigation(url: str):
 
         result = browser_service.navigate_to_url(url)
         logger.info(f"Successfully navigated to {url}.")
-        return {
-            "status": "success" if result.ok else "error",
-            "message": result.text,
-            "status_code": result.status_code
-        }
+        print(f"!!!!! {result}")
+        return result
 
     except Exception as e:
         logger.error(f"Navigation error: {str(e)}")
