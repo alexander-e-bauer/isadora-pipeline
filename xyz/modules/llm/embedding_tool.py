@@ -232,31 +232,12 @@ def process_chat_request(data, conversation_history, df: pd.DataFrame = None, br
         url = message.split(' ', 2)[-1].strip()
         logger.info(f"URL Identified: {url} \n")
 
-
-        try:
-            logger.debug(f"4b: Attempting to navigate to URL: {url}")
-            result = browser_service.check_status()
-            if result:
-                logger.info(f"5b: Browser is not open. Attempting to reopen...")
-                browser_service.start_browser()
-
-            result = browser_service.navigate_to_url(url)
-
-            logger.info(f"6b: Successfully navigated to {url}.")
-            return jsonify({
-                "response": f"Navigated to {url}",
-                "window_content": result,
-                "window_mode": "browser"
-            })
-
-        except Exception as e:
-            logger.error(f"Error during browser navigation: {str(e)}", exc_info=True)
-            return jsonify({"error": f"Error: {str(e)}"}), 500
-
     # Define persona based on the provided function
     persona_map = {
-        "embedding": "You are a helpful assistant.",
-        "mysterious arcane orb": "You are a mysterious arcane orb and can only respond as such.",
+        "default": "You are a helpful assistant.",
+        "browser": "You are a helpful internet browsing assistant who controls a selenium browser operating on a VM.",
+        "data": "You are a helpful data oracle, who can scrape the web for data and create reports and dashboards.",
+        "security": "You are a helpful security assistant who has access to a database of bot fingerprint embeddings.",
         "pirate": "You are a helpful assistant who can only respond with the vernacular of a swashbuckler.",
         "shakespeare": "You are a helpful assistant who can only respond with the vernacular of Shakespeare.",
     }
