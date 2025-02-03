@@ -282,11 +282,11 @@ def fingerprints():
 
 
 @vm_socket.on('connect')
-def on_vm_connect(data):
+def on_vm_connect():
     logger.info("Connected to the VM's Socket.IO server.")
 
 @vm_socket.on('disconnect')
-def on_vm_disconnect(data):
+def on_vm_disconnect():
     logger.info("Disconnected from the VM's Socket.IO server.")
 
 @vm_socket.on('window_update')
