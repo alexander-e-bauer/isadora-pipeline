@@ -5,14 +5,72 @@ import pprint
 from flask import jsonify
 import json
 
+from app import socketio_app
 from xyz.modules.llm.embedding_tools import embedding_model, embedding_generator, embedding_search
 from xyz.modules.llm.embedding_tools.embedding_search import google
+from xyz.modules.llm.browser_service import BrowserService
 
 logger = config.logger
 OAI = config.OAI
 search_df = pd.DataFrame()
 
-tool_schema = {}
+def generate_dynamic_response(title: str, url: str, summary: str) -> str:
+    """
+    Use OpenAI's GPT model to generate a conversational response dynamically
+    based on the retrieved webpage data.
+    """
+    if not title and not summary:
+        return f"I navigated to {url}, but I couldn't find much information there."
+
+    # Construct a more detailed prompt for GPT
+    prompt = (
+        f"I visited the website '{title}' at {url}. "
+        f"Here's a summary of what I found: {summary}. "
+        "If available, include additional relevant details from the page."
+        "Generate a conversational response for the user, summarizing this information naturally."
+    )
+
+    try:
+        # Call OpenAI's chat completion API
+        completion = OAI.client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that generates conversational responses."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        # Extract and return the generated response
+        response = completion.choices[0].message.content.strip()
+        return response
+
+    except Exception as e:
+        logger.error(f"Error generating dynamic response with OpenAI: {str(e)}", exc_info=True)
+        return "I encountered an error while generating a response. Please try again later."
+
+
+
+browser_tool_schema = {
+    "name": "navigate_to_url",
+    "description": "Navigate to a URL using the browser.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "url": {
+                "type": "string",
+                "format": "uri",
+                "pattern": "^https?://",
+                "description": "The full URL to navigate to (must include http/https)"
+            }
+        },
+        "required": ["url"]
+    }
+}
+
+
+def get_browser_service():
+    return BrowserService.get_instance()
+
 
 def initialize_code_embeddings(update=False):
     """Load or update code embeddings from the codebase"""
@@ -56,12 +114,60 @@ def process_basic_chat(conversation_history, user_input: str, conversation_id: s
         completion = OAI.client.chat.completions.create(
             model=model,
             messages=messages,
-            functions=[tool_schema],  # Include any required function schemas here
+            functions=[browser_tool_schema],  # Include any required function schemas here
             function_call="auto"  # Allow the model to dynamically decide on function calls
         )
 
         # Extract the response message
         response_message = completion.choices[0].message
+
+        # Check if the model wants to call a function
+        if response_message.function_call:
+            function_call = response_message.function_call
+            logger.info(f"Function call detected: {function_call}")
+
+            # Handle the function call dynamically
+            if function_call.name == "navigate_to_url":
+                function_args = json.loads(function_call.arguments)
+                url = function_args.get("url")
+
+                # Perform the navigation
+                navigation_result = handle_browser_navigation(url)
+
+                # Add the function call response to conversation history
+                conversation_history[conversation_id].append({
+                    "role": "assistant",
+                    "content": f"Function call: Navigated to {url}",
+                    "function_call": {
+                        "name": function_call.name,
+                        "arguments": function_call.arguments
+                    }
+                })
+
+                # Handle the navigation result
+                if navigation_result["status"] == "success":
+                    # Generate a dynamic response based on the navigation result
+                    response = generate_dynamic_response(
+                        title=navigation_result.get("page_info", {}).get("title", "Website"),
+                        url=navigation_result.get("page_info", {}).get("url", url),
+                        summary=navigation_result.get("message", "No additional details available.")
+                    )
+
+                    # Add the response to conversation history
+                    conversation_history[conversation_id].append({
+                        "role": "assistant",
+                        "content": response
+                    })
+
+                    return response
+                else:
+                    # Handle navigation errors gracefully
+                    error_message = f"Sorry, I couldn't navigate to {url}. Here's the error: {navigation_result['message']}"
+                    conversation_history[conversation_id].append({
+                        "role": "assistant",
+                        "content": error_message
+                    })
+                    return error_message
 
         # Handle normal (non-function-call) responses
         output = response_message.get("content", "")
@@ -75,6 +181,40 @@ def process_basic_chat(conversation_history, user_input: str, conversation_id: s
     except Exception as e:
         logger.error(f"Error in chat completion: {str(e)}", exc_info=True)
         raise
+
+
+
+
+def handle_browser_navigation(url: str):
+    """Handle the browser navigation request."""
+    try:
+        logger.info(f"Attempting to navigate to URL: {url}")
+        browser_service = get_browser_service()
+
+        if not browser_service.check_status():
+            logger.info("Browser is not open. Starting the browser...")
+            browser_service.start_browser()
+
+        result = browser_service.navigate_to_url(url)
+
+        # Fetch detailed content after navigation
+        if result.get("status") == "success":
+            content_result = browser_service.get_page_content(socketio_app=socketio_app)
+            if content_result.get("status") == "success":
+                result["page_info"]["html"] = content_result["content"].get("html", "")
+                result["page_info"]["summary"] = content_result["content"].get("summary", "No summary available.")
+
+        logger.info(f"Successfully navigated to {url}.")
+        return result
+
+    except Exception as e:
+        logger.error(f"Navigation error: {str(e)}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "status_code": 500
+        }
+
 
 
 def process_embedding_enhanced_chat(conversation_history, user_input: str, df: pd.DataFrame, conversation_id: str,
@@ -103,10 +243,22 @@ def process_embedding_enhanced_chat(conversation_history, user_input: str, df: p
         completion = OAI.client.chat.completions.create(
             model=model,
             messages=messages,
-            functions=[tool_schema],  # Add the browser tool schema
+            functions=[browser_tool_schema],  # Add the browser tool schema
             function_call="auto"  # Let the model decide when to call the function
         )
 
+        # Check if the model wants to call a function
+        if completion.choices[0].finish_reason == "function_call":
+            function_call = completion.choices[0].message.function_call
+            logger.info(f"Function call detected: {function_call}")
+
+            # Handle the function call
+            if function_call["name"] == "navigate_to_url":
+                function_args = json.loads(function_call["arguments"])
+                url = function_args.get("url")
+                return handle_browser_navigation(url)
+
+        # Otherwise, return the model's response
         output = completion.choices[0].message.content
         conversation_history[conversation_id].append({"role": "assistant", "content": output})
 
@@ -181,6 +333,8 @@ def process_chat_request(data, conversation_history, df: pd.DataFrame = None, br
     # Define persona based on the provided function
     persona_map = {
         "default": "You are a helpful assistant.",
+        "browser": "You are a helpful internet browsing assistant who controls a selenium browser operating on a VM.",
+        "data": "You are a helpful data oracle, who can scrape the web for data and create reports and dashboards.",
         "security": "You are a helpful security assistant who has access to a database of bot fingerprint embeddings.",
         "pirate": "You are a helpful assistant who can only respond with the vernacular of a swashbuckler.",
         "shakespeare": "You are a helpful assistant who can only respond with the vernacular of Shakespeare.",

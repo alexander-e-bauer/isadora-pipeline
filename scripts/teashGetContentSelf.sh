@@ -1,1 +1,1 @@
-curl -X GET http://io.isadora.ai/api/browser/content
+curl -X GET https://isadora.ai/.env

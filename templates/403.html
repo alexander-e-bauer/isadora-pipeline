@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>403 Forbidden</title>
+    <meta name="robots" content="noindex, nofollow">
+    <style>
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #000;
+            color: #0f0;
+            padding: 20px;
+            overflow: hidden;
+        }
+        .hidden {
+            display: none;
+        }
+        .matrix {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: black;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+        a {
+            color: #0f0;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>403 Forbidden</h1>
+    <p>Access Denied. Unauthorized access detected.</p>
+    <p>If you believe this is an error, please <a href="/">return to the homepage</a>.</p>
+    <!-- Hidden honey pot links and forms -->
+    <div class="hidden">
+        <!-- Hidden Links -->
+        <a href="/admin-panel">Admin Panel</a>
+        <a href="/secure-login">Secure Login</a>
+        <!-- Hidden Forms -->
+        <form action="/process" method="post">
+            <input type="text" name="username" value="admin">
+            <input type="password" name="password" value="password">
+            <input type="submit" value="Login">
+        </form>
+        <!-- Hidden Scripts -->
+        <script>
+            window.location.href = "/redirect-loop";
+        </script>
+    </div>
+    <!-- Matrix Rain Animation -->
+    <div class="matrix">
+        <canvas id="matrixCanvas"></canvas>
+    </div>
+    <!-- Obfuscated JavaScript -->
+    <script>
+        (function(){
+            var c = document.getElementById('matrixCanvas');
+            var ctx = c.getContext('2d');
+            c.height = window.innerHeight;
+            c.width = window.innerWidth;
+            var matrixChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789@#$%^&*()*&^%";
+            matrixChars = matrixChars.split("");
+            var font_size = 16;
+            var columns = c.width / font_size;
+            var drops = [];
+            for (var x = 0; x < columns; x++)
+                drops[x] = Math.random() * c.height;
+            function draw() {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.04)";
+                ctx.fillRect(0, 0, c.width, c.height);
+                ctx.fillStyle = "#0F0";
+                ctx.font = font_size + "px arial";
+                for (var i = 0; i < drops.length; i++) {
+                    var text = matrixChars[Math.floor(Math.random() * matrixChars.length)];
+                    ctx.fillText(text, i * font_size, drops[i] * font_size);
+                    if (drops[i] * font_size > c.height && Math.random() > 0.975)
+                        drops[i] = 0;
+                    drops[i]++;
+                }
+            }
+            setInterval(draw, 35);
+        })();
+        // Fake AJAX Requests to Resource-Intensive Endpoints
+        setInterval(function(){
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '/intensive-task?rand=' + Math.random(), true);
+            xhr.send();
+        }, 5000);
+        // Obfuscated Redirect Loop
+        (function(w){
+            var f = function(){
+                w.location.href = '/auth?token=' + Math.random();
+            };
+            setTimeout(f, 10000);
+        })(window);
+    </script>
+</body>
+</html>

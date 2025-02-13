@@ -33,6 +33,12 @@ file_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 logger.addHandler(file_handler)
 
+PUBLIC = False
+if PUBLIC:
+    gateway = 'open'
+else:
+    gateway = 'closed'
+print(f"Gateway: {gateway}")
 
 
 def log(msg):
@@ -44,6 +50,44 @@ class DATABASE:
     user = os.getenv('DB_USER')
     password = os.getenv('DB_PASSWORD')
     name = os.getenv('DB_NAME')
+    pinecone_api_key = os.getenv('PINECONE_API_KEY')
+    pinecone_host = os.getenv('PINECONE_HOST')
+
+
+class AIS:
+    # List of known bad user-agent patterns (bots to block)
+    BLOCKED_USER_AGENTS = [
+        r'curl',  # Block basic curl requests
+        r'wget',  # Block wget requests
+        r'python-requests',  # Block Python requests
+        r'httpclient',  # Block generic HTTP clients
+        r'libwww-perl',  # Block Perl-based HTTP clients
+        r'bot',  # Generic bot keyword
+        r'scrapy',  # Block Scrapy spiders
+        r'java',  # Block Java-based HTTP clients
+    ]
+    # List of suspicious patterns to block
+    SUSPICIOUS_PATTERNS = [
+        r'\.env',  # Block .env file requests
+        r'\.git',  # Block .git folder or related requests
+        r'\.htaccess',  # Block .htaccess file requests
+        r'wp-config\.php',  # Block WordPress config file requests
+        r'phpinfo\.php',  # Block requests for phpinfo.php
+        r'composer\.json',  # Block composer.json requests
+        r'/etc/passwd',  # Block attempts to access Linux password file
+        r'adminer\.php',  # Block requests for adminer.php
+        r'wp-admin',  # Block requests for WordPress admin paths
+        r'config\.yml',  # Block YAML configuration files
+        r'webui',  # Block requests for web interfaces
+        r'geoserver',  # Block requests for geospatial servers
+        r'login\.php',  # Block login attempts to PHP-based systems
+        r'xmlrpc\.php',  # Common WordPress attack vector
+        r'cgi-bin',  # Block CGI-bin folder access
+    ]
+    MAX_REQUESTS_PER_MINUTE = 60
+    BLOCKED_COUNTRIES = []
+    HONEYPOT_ENDPOINTS = []
+    IPINFO_TOKEN = os.getenv('IPINFO_TOKEN')
 
 
 class Config:
@@ -82,3 +126,6 @@ class OAI:
 openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 OAI.client = openai_client
 
+PINECONE_API_KEY = os.getenv('PINECONE_API_KEY')
+PINECONE_HOST = os.getenv('PINECONE_HOST')
+SK = os.getenv('SKELETON_KEY')

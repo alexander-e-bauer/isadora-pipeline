@@ -1,5 +1,9 @@
-# app.py (Orchestrator) hosted on heroku at https://isadora-v2-74e5a1b97f07.herokuapp.com
+# app.py (Decoy Blog) hosted on heroku at https://isadora-v2-74e5a1b97f07.herokuapp.com
+import eventlet
+from datetime import datetime, timedelta
+from collections import defaultdict
 import os
+import re
 import sys
 import tempfile
 import ssl
@@ -7,49 +11,39 @@ import urllib3
 from flask import Flask, request, make_response, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
-from gevent import monkey
+from flask import Flask, request, jsonify, session, render_template, abort, redirect
+import psycopg2
+from threading import Thread
 import socketio
-monkey.patch_all()
-from werkzeug.serving import WSGIRequestHandler
 
-from xyz.modules.llm.llm_blueprint import init_app as init_llm_bp
-from xyz.modules.llm.browser_service import BrowserService
-from xyz.modules.database.fingerprints import fetch_fingerprints
+from werkzeug.serving import WSGIRequestHandler
+import pandas as pd
+import numpy as np
+import geoip2.database
 
 sys.setrecursionlimit(3000)
-
-from xyz.modules.llm import embedding_tool
 import config
+from config import SK, OAI, AIS, logger, gateway
+from xyz.modules.llm.embedding_tools.fingerprint_embeddings import fingerprint_bot
+from xyz.modules.llm import embedding_tool
 
-OAI = config.OAI
-logger = config.logger
 
 
-
-def ensure_directory_exists(directory):
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-
-# Use temp directory or environment variable
-EMBEDDINGS_DIR = os.getenv('EMBEDDINGS_DIR', os.path.join(tempfile.gettempdir(), 'embeddings'))
-
-# SSL Configuration
 def create_ssl_context():
     try:
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
+        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        context.check_hostname = True
+        context.verify_mode = ssl.CERT_REQUIRED
         return context
     except Exception as e:
         logger.error(f"Failed to create SSL context: {e}")
         return None
 
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 ssl_context = create_ssl_context()
-
 conversation_history = {}
-
+# In-memory rate-limiting storage (can be replaced with Redis or a database)
+RATE_LIMIT = defaultdict(list)
 app = Flask(__name__)
 app.logger.handlers = logger.handlers
 app.logger.setLevel(logger.level)
@@ -82,18 +76,15 @@ CORS(app,
 socketio_app = SocketIO(
     app,
     cors_allowed_origins=ALLOWED_ORIGINS,
-    async_mode='gevent',
+    async_mode='eventlet',
     ping_timeout=60000,
     ping_interval=25000,
     always_connect=True,
     path='/socket.io',
-    transport=['websocket', 'polling'],
+    transport=['websocket'],  # Ensure 'websocket' is included
     cookie=False,
     cors_credentials=True
 )
-
-# VM Socket.IO Integration
-vm_socket = socketio.Client(reconnection=True, reconnection_attempts=5, reconnection_delay=2)
 
 
 # Flask configuration
@@ -117,17 +108,118 @@ app.config.update(
     BROWSER_SERVICE_API_KEY=os.getenv('BROWSER_SERVICE_API_KEY')
 )
 
-with app.app_context():
-    browser_service = BrowserService.get_instance()
-    browser_service.initialize_with_app(app)
 
-df = embedding_tool.initialize_code_embeddings()
+@app.before_request
+def log_request():
+    """Log incoming requests."""
+    logger.info(
+        f"Incoming request: {request.method} {request.path} | "
+        f"Headers: {dict(request.headers)} | "
+        f"Body: {request.get_json(silent=True)}"
+    )
+
+# Middleware to block suspicious requests and fingerprint bots
+@app.before_request
+def block_suspicious_requests():
+    origin = request.headers.get("X-Real-Ip") or request.headers.get("Origin")
+    if origin:
+        origin = origin.split(",")[0].strip()  # Normalize origin
+        if not origin.startswith("http://") and not origin.startswith("https://"):
+            origin = f"https://{origin}"  # Add schema if missing
+
+    heroku_secret = request.headers.get("X-Heroku-Auth")
+    user_agent = request.headers.get("User-Agent", "").lower()
+    ip_address = request.headers.get("X-Real-Ip", request.remote_addr)
+    ip_address = ip_address.split(",")[0].strip()  # Normalize ip
+
+
+
+    logger.info(f"X-Real-IP: {ip_address}")
+    timestamp = datetime.utcnow()
+
+    # 1. Check Trusted Heroku App Header
+    if heroku_secret == SK:  # Replace with your Heroku secret
+        app.logger.info(f"Trusted request from Heroku app.")
+        return  # Allow the request
+
+    # 2. Block Suspicious Patterns in Request Paths
+    for pattern in AIS.SUSPICIOUS_PATTERNS:
+        if re.search(pattern, request.path, re.IGNORECASE):
+            app.logger.info(f"Blocked suspicious request to: {request.path}")
+            fingerprint_bot(request, ip_address, user_agent)  # Fingerprint the suspicious bot
+            abort(403)  # Return a 403 Forbidden response
+
+    # 3. Block Suspicious User-Agent Strings
+    for pattern in AIS.BLOCKED_USER_AGENTS:
+        if re.search(pattern, user_agent, re.IGNORECASE):
+            app.logger.info(f"Blocked suspicious User-Agent: {user_agent}")
+            fingerprint_bot(request, ip_address, user_agent)  # Fingerprint the suspicious bot
+            abort(403)
+
+    # 4. Rate Limiting
+    RATE_LIMIT[ip_address].append(timestamp)
+    # Keep only requests in the last minute
+    RATE_LIMIT[ip_address] = [t for t in RATE_LIMIT[ip_address] if t > timestamp - timedelta(minutes=1)]
+    if len(RATE_LIMIT[ip_address]) > AIS.MAX_REQUESTS_PER_MINUTE:  # Set your rate limit
+        app.logger.info(f"Rate limit exceeded for IP: {ip_address}")
+        fingerprint_bot(request, ip_address, user_agent)  # Fingerprint the suspicious bot
+        abort(429)  # Too Many Requests
+
+    # 5. Geo-Location Blocking
+    try:
+        with geoip2.database.Reader('/path/to/GeoLite2-City.mmdb') as reader:
+            geo_data = reader.city(ip_address)
+            country = geo_data.country.iso_code
+            if country in AIS.BLOCKED_COUNTRIES:
+                app.logger.info(f"Blocked request from blocked country: {country}")
+                fingerprint_bot(request, ip_address, user_agent)  # Fingerprint the suspicious bot
+                abort(403)
+    except Exception as e:
+        app.logger.error(f"Geo-location lookup failed: {e}")
+
+    # 6. Honeypot Detection
+    if request.path in AIS.HONEYPOT_ENDPOINTS:
+        app.logger.warning(f"Honeypot triggered by IP: {ip_address}")
+        fingerprint_bot(request, ip_address, user_agent)  # Fingerprint the suspicious bot
+        abort(403)
+
+    # 7. Header Inconsistencies
+    x_forwarded_for = request.headers.get("X-Forwarded-For")
+    x_real_ip = request.headers.get("X-Real-Ip")
+    if x_forwarded_for and x_real_ip and x_real_ip not in x_forwarded_for:
+        app.logger.info(f"Blocked request with inconsistent headers from IP: {ip_address}")
+        fingerprint_bot(request, ip_address, user_agent)  # Fingerprint the suspicious bot
+        abort(403)
+
+    # 8. TLS/SSL Analysis (Optional)
+    # You can analyze TLS/SSL protocol and cipher suite here if needed
+    # Example: Check for outdated TLS versions or weak cipher suites
+
+    # 9. Block All Origins
+    if gateway == 'closed':
+        if origin not in ALLOWED_ORIGINS:
+            app.logger.info(f"Blocked request from disallowed origin: {origin}")
+            abort(403)
+
+    # 10. Log All Requests for Monitoring
+    app.logger.info(f"Request Path: {request.path}, User-Agent: {user_agent}, IP: {ip_address}")
 
 
 @app.before_request
-def log_request_info():
-    logger.debug('Headers: %s', request.headers)
-    logger.debug('Body: %s', request.get_data())
+def handle_options_preflight():
+    if request.method == 'OPTIONS':
+        response = app.make_response('')
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response, 204
+
+
+@app.route('/')
+def index():
+    logger.info("Serving index page.")
+    return render_template('index.html')
 
 
 @app.after_request
@@ -145,169 +237,6 @@ def after_request(response):
     return response
 
 
-@socketio_app.on('browse')
-def handle_browse(data):
-    url = data.get('url')
-    try:
-        result = browser_service.navigate_to_url(url)
-        # Emit the result to update the frontend dynamically
-        socketio_app.emit('window_update', {
-            'content': result.get("page_info", {}),
-            'mode': 'browser'
-        })
-    except Exception as e:
-        logger.error(f"Browse error: {str(e)}")
-        socketio_app.emit('error', {'message': f'Failed to browse: {str(e)}'})
-
-
-
-@app.route('/api/browser/navigate', methods=['POST'])
-def navigate():
-    data = request.json
-    url = data.get('url')
-
-    if not url:
-        return jsonify({"status": "error", "message": "URL is required"}), 400
-
-    try:
-        result = browser_service.navigate_to(url)
-
-        # Emit the result through socket.io
-        socketio_app.emit('window_update', {
-            'content': result,
-            'mode': 'browser'
-        })
-        logger.debug(f"Navigated to {url} with result: {result}\n\n Emitted to socket.io\n")
-
-        return jsonify({"status": "success", "data": result})
-    except Exception as e:
-        logger.error(f"Navigation error: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@app.route('/api/chat', methods=['OPTIONS'])
-def handle_preflight():
-    response = make_response()
-    origin = request.headers.get('Origin')
-    if origin in ALLOWED_ORIGINS:
-        response.headers.update({
-            'Access-Control-Allow-Origin': origin,
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
-            'Access-Control-Allow-Credentials': 'true',
-            'Access-Control-Max-Age': '86400'
-        })
-    return response
-
-
-@app.route('/api/chat', methods=['POST'])
-def chat():
-    try:
-        logger.info("1: Received chat request")
-        data = request.json
-        logger.debug(f"Request data: {data}\n")
-
-        logger.info("2: Processing chat request with embedding_tool")
-        result = embedding_tool.process_chat_request(data, conversation_history=conversation_history, df=df,
-                                                     browser_service=browser_service)
-        # Emit the result through socket.io
-        socketio_app.emit('window_update', {
-            'content': result,
-            'mode': 'browser'
-        })
-
-        logger.debug(f"Chat processing result: {result}")
-
-        response = make_response(result)
-        origin = request.headers.get('Origin')
-        logger.debug(f"Request origin: {origin}")
-
-        if origin in ALLOWED_ORIGINS:
-            logger.info(f"Origin {origin} is allowed. Adding CORS headers.")
-            response.headers.update({
-                'Access-Control-Allow-Origin': origin,
-                'Access-Control-Allow-Credentials': 'true'
-            })
-        else:
-            logger.warning(f"Origin {origin} is not in allowed origins.")
-
-        return response
-    except Exception as e:
-        logger.error(f"Chat error: {str(e)}", exc_info=True)
-
-        error_response = jsonify({
-            "error": str(e),
-            "message": "Failed to process chat request"
-        })
-        error_response.status_code = 500
-
-        logger.debug(f"Error response: {error_response.get_json()}")
-        return error_response
-
-
-@app.route('/api/browser/content', methods=['GET'])
-def fetch_page_content():
-    logger.info("Request received to fetch webpage content.")
-
-    # Fetch content from the VM using browser_service
-    content_response = browser_service.get_page_content(socketio_app=socketio_app)
-    logger.debug(f"Content response from VM: {content_response}")
-
-    if content_response.get("status") != "success":
-        error_message = content_response.get("message", "Failed to retrieve page content")
-        logger.error(f"Error fetching content from VM: {error_message}")
-        return jsonify({"status": "error", "message": error_message}), 500
-
-    # Extract content and emit to frontend via Socket.IO
-    content = content_response.get("content", {})
-    socketio_app.emit("window_update", {
-        "content": {
-            "html": content.get("html", ""),
-            "title": content.get("title", "")
-        },
-        "mode": "browser"
-    })
-
-    # Log the emitted data
-    logger.debug(f"Emitted window_update event with content: {content} and mode: browser")
-
-    return jsonify({"status": "success", "content": content})
-
-
-@app.route("/fingerprints", methods=["GET"])
-def fingerprints():
-    data = fetch_fingerprints()
-    return {"fingerprints": data}
-
-
-
-@vm_socket.on('connect')
-def on_vm_connect():
-    logger.info("Connected to the VM's Socket.IO server.")
-
-@vm_socket.on('disconnect')
-def on_vm_disconnect():
-    logger.info("Disconnected from the VM's Socket.IO server.")
-
-@vm_socket.on('window_update')
-def handle_vm_window_update(data):
-    logger.debug(f"Received window_update from VM: ")
-    vm_socket.emit('window_update', data)
-    logger.debug(f"Forwarded window_update to frontend: ")
-
-try:
-    vm_socket.connect('https://isadora.ai')  # Replace with the VM's Socket.IO URL
-    logger.info("Successfully connected to the VM's Socket.IO server.")
-except Exception as e:
-    logger.error(f"Failed to connect to the VM's Socket.IO server: {e}")
-
-
-with app.app_context():
-    browser_service = BrowserService.get_instance()
-    browser_service.initialize_with_app(app)
-
-
-
 # Socket event handlers
 @socketio_app.on('connect')
 def handle_connect():
@@ -319,22 +248,6 @@ def handle_connect():
 def handle_disconnect(data=None):
     #logger.info(f"Client disconnected: {request.sid}")
     x = 100
-
-@socketio_app.on('window_update', namespace='/')
-def handle_window_update(data):
-    # Re-emit the event to the frontend
-    emit('window_update', data, broadcast=True)
-    logger.debug(f"Window update event: {data}")
-
-@socketio_app.on('browse')
-def handle_browse(data):
-    url = data.get('url')
-    try:
-        result = browser_service.navigate_to(url)
-        socketio.emit('browse_result', result)
-    except Exception as e:
-        logger.error(f"Browse error: {str(e)}")
-        socketio.emit('error', {'message': f'Failed to browse: {str(e)}'})
 
 
 @socketio_app.on('typing')
@@ -377,29 +290,16 @@ def handle_error(error):
     return response, 500
 
 
-@app.route('/update_embeddings')
-def update_embeddings():
-    global df
-    df = embedding_tool.initialize_directory_embeddings('xyz/modules/llm/embedding_tools/embeddings/source_documents',
-                                       'source_documents', update=True)
-    return jsonify({"status": "success", "message": "Embeddings updated"})
-
-
-# Register the LLM blueprint
-init_llm_bp(app)
-
 if __name__ == '__main__':
-    ensure_directory_exists(EMBEDDINGS_DIR)
 
     if config.Config.production:
         socketio_app.run(
             app,
             host='0.0.0.0',
-            port=int(os.environ.get('PORT', 5000)),
+            port=int(os.environ.get('PORT', 5000)),  # Use Heroku's assigned port
             debug=False,
             use_reloader=False,
-            cors_allowed_origins=ALLOWED_ORIGINS,
-            allow_unsafe_werkzeug=True
+            cors_allowed_origins=ALLOWED_ORIGINS
         )
     else:
         socketio_app.run(
@@ -410,3 +310,4 @@ if __name__ == '__main__':
             ssl_context=ssl_context,
             cors_allowed_origins=ALLOWED_ORIGINS
         )
+
