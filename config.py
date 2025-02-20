@@ -18,20 +18,15 @@ logger.setLevel(logging.DEBUG)
 console_handler = logging.StreamHandler(sys.stdout)  # Use `sys.stdout` for compatibility with Heroku
 console_handler.setLevel(logging.DEBUG)  # Log DEBUG and above to console
 
-# Add a FileHandler to log at DEBUG level to a file
-file_handler = logging.FileHandler('debug.log')
-file_handler.setLevel(logging.DEBUG)  # Log DEBUG and above to file
-
 # Define a log format
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 # Apply the formatter to both console and file handlers
 console_handler.setFormatter(formatter)
-file_handler.setFormatter(formatter)
 
 # Add handlers to the logger
 logger.addHandler(console_handler)
-logger.addHandler(file_handler)
+
 
 PUBLIC = False
 if PUBLIC:
