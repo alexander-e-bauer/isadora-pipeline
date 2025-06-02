@@ -33,6 +33,8 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    broker_use_ssl={"ssl_cert_reqs": ssl.CERT_NONE} if REDIS_URL.startswith("rediss://") else None,
+    redis_backend_use_ssl={"ssl_cert_reqs": ssl.CERT_NONE} if REDIS_URL.startswith("rediss://") else None,
 )
 
 # Add periodic task configuration
