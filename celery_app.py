@@ -5,6 +5,18 @@ import os
 # Use Redis URL from Heroku if available, otherwise use local
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
+broker_url = REDIS_URL
+result_backend = REDIS_URL
+
+# Only add this if your URL starts with "rediss://"
+if REDIS_URL and REDIS_URL.startswith("rediss://"):
+    broker_use_ssl = {
+        'ssl_cert_reqs': ssl.CERT_NONE  # Or CERT_REQUIRED if you want strict validation
+    }
+    redis_backend_use_ssl = {
+        'ssl_cert_reqs': ssl.CERT_NONE
+    }
+
 # Initialize Celery app
 celery_app = Celery(
     "tasks",
