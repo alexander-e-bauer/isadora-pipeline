@@ -1,5 +1,0 @@
-See Triggers
-
-SELECT tgname, tgrelid::regclass AS table_name, tgfoid::regprocedure AS function_name
-FROM pg_trigger
-WHERE tgrelid = 'bot_fingerprints'::regclass;

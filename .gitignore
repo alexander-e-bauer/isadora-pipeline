@@ -40,7 +40,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
-
+celerybeat-schedule.db
 # Local development
 instance/
 .webassets-cache

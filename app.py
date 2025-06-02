@@ -1,313 +1,204 @@
-# app.py (Decoy Blog) hosted on heroku at https://isadora-v2-74e5a1b97f07.herokuapp.com
-import eventlet
-from datetime import datetime, timedelta
-from collections import defaultdict
-import os
-import re
-import sys
-import tempfile
-import ssl
-import urllib3
-from flask import Flask, request, make_response, jsonify
-from flask_socketio import SocketIO, emit
-from flask_cors import CORS
-from flask import Flask, request, jsonify, session, render_template, abort, redirect
-import psycopg2
-from threading import Thread
-import socketio
-
-from werkzeug.serving import WSGIRequestHandler
+import logging
+from flask import Flask
+from config import PINECONE_API_KEY, PINECONE_HOST, logger
+from xyz.finazon_service.retrive_data import FinazonService
+from xyz.finazon_service.sql_service import (
+    get_last_processed_timestamp,
+    update_last_processed_timestamp,
+    insert_historical_record,
+    insert_computed_metrics,
+    insert_new_ticker,
+    check_for_ticker,
+)
+from xyz.finazon_service.api_service import get_new_ticker_gen_data
+from datetime import datetime
+from pinecone import Pinecone
 import pandas as pd
-import numpy as np
-import geoip2.database
 
-sys.setrecursionlimit(3000)
-import config
-from config import SK, OAI, AIS, logger, gateway
-from xyz.modules.llm.embedding_tools.fingerprint_embeddings import fingerprint_bot
-from xyz.modules.llm import embedding_tool
+# Initialize Pinecone and Flask
+pc = Pinecone(api_key=PINECONE_API_KEY)
+index = pc.Index(PINECONE_HOST)
+app = Flask(__name__)
 
 
-
-def create_ssl_context():
+# Utility to fetch and store ticker data
+def fetch_and_store_ticker_data(ticker_symbol):
+    """
+    Fetch general and financial data for a ticker and store it in the database.
+    """
+    logger.info(f"Fetching data for ticker: {ticker_symbol}")
     try:
-        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        context.check_hostname = True
-        context.verify_mode = ssl.CERT_REQUIRED
-        return context
+
+        # Check if ticker already exists
+        existing_ticker = check_for_ticker(ticker_symbol)
+        if existing_ticker:
+            logger.info(f"Ticker {ticker_symbol} already exists in DB.")
+            return existing_ticker  # Return the ORM object!
+
+        # Fetch general and financial data
+        general_data, ticker_name = get_new_ticker_gen_data(ticker_symbol)
+
+        # Insert the new ticker into the database
+        new_ticker = insert_new_ticker(ticker_symbol, ticker_name, general_data)
+        logger.info(f"Ticker {ticker_symbol} data stored successfully.")
+        return new_ticker
     except Exception as e:
-        logger.error(f"Failed to create SSL context: {e}")
+        logger.error(f"Error fetching or storing ticker data for {ticker_symbol}: {e}")
         return None
 
 
-ssl_context = create_ssl_context()
-conversation_history = {}
-# In-memory rate-limiting storage (can be replaced with Redis or a database)
-RATE_LIMIT = defaultdict(list)
-app = Flask(__name__)
-app.logger.handlers = logger.handlers
-app.logger.setLevel(logger.level)
+import numpy as np
 
-WSGIRequestHandler.timeout = 600
+def update_time_series_data(ticker, interval='15m', start_year=2025, batch_size=100):
+    logger.info(f"Starting time-series data update for ticker: {ticker}")
+    retriever = FinazonService(rate_limit_per_minute=5)
+    from xyz.finazon_service.metrics import compute_batch_metrics
 
-# Explicitly define allowed origins
-ALLOWED_ORIGINS = [
-    'https://isadora-f5fbebf38bc6.herokuapp.com',
-    'https://isadora-v2-74e5a1b97f07.herokuapp.com',
-    'https://34.16.120.105',
-    'https://isadora.ai',
-    'https://io.isadora.ai',
-    'https://chat.isadora.ai',
-    'https://73.18.165.209',
-    'https://64.44.118.215',
-]
+    # Check/create ticker
+    existing_ticker = check_for_ticker(ticker)
+    if not existing_ticker:
+        try:
+            general_data, ticker_name = get_new_ticker_gen_data(ticker)
+            insert_new_ticker(
+                symbol=ticker,
+                company_name=ticker_name if ticker_name else f"Company {ticker}",
+                general_info=general_data if general_data else {"info": "Placeholder general info"},
+            )
+            logger.info(f"Ticker {ticker} created successfully.")
+        except Exception as e:
+            logger.error(f"Error creating new ticker {ticker}: {e}")
+            return
 
+    last_timestamp = get_last_processed_timestamp(ticker)
+    if last_timestamp:
+        try:
+            last_timestamp = int(last_timestamp)
+            start_time = datetime.utcfromtimestamp(last_timestamp)
+        except ValueError as e:
+            logger.error(f"Invalid last timestamp for {ticker}: {last_timestamp}. Error: {e}")
+            return
+    else:
+        start_time = datetime(start_year, 5, 22)
+        logger.info(f"No last timestamp found. Fetching data starting from {start_time}.")
 
-CORS(app,
-     resources={r"/*": {"origins": ALLOWED_ORIGINS}},
-     supports_credentials=True,
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With",
-                   "Accept", "Origin", "Access-Control-Request-Method",
-                   "Access-Control-Request-Headers"],
-     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+    start_time = FinazonService.format_start_time(start_time)
 
-
-# Configure SocketIO with explicit CORS settings
-socketio_app = SocketIO(
-    app,
-    cors_allowed_origins=ALLOWED_ORIGINS,
-    async_mode='eventlet',
-    ping_timeout=60000,
-    ping_interval=25000,
-    always_connect=True,
-    path='/socket.io',
-    transport=['websocket'],  # Ensure 'websocket' is included
-    cookie=False,
-    cors_credentials=True
-)
-
-
-# Flask configuration
-app.config.update(
-    SECRET_KEY=os.environ.get("SECRET_KEY"),
-    SQLALCHEMY_DATABASE_URI=f'postgresql://{os.getenv("POSTGRES_USER")}:{os.getenv("POSTGRES_PASSWORD")}@localhost/{os.getenv("POSTGRES_DB")}',
-    SECURITY_PASSWORD_SALT=os.environ.get("SECURITY_PASSWORD_SALT"),
-    SECURITY_REGISTERABLE=True,
-    SECURITY_RECOVERABLE=True,
-    SECURITY_CHANGEABLE=True,
-    SECURITY_REGISTER_URL='/register',
-    SECURITY_LOGIN_URL='/login',
-    SECURITY_LOGOUT_URL='/logout',
-    SECURITY_RESET_URL='/reset',
-    SECURITY_CHANGE_URL='/change',
-    SECURITY_CSRF_COOKIE_NAME="XSRF-TOKEN",
-    SECURITY_CSRF_HEADER_NAME="X-XSRF-TOKEN",
-    WTF_CSRF_CHECK_DEFAULT=False,
-    WTF_CSRF_TIME_LIMIT=None,
-    BROWSER_SERVICE_URL=os.getenv('BROWSER_SERVICE_URL'),
-    BROWSER_SERVICE_API_KEY=os.getenv('BROWSER_SERVICE_API_KEY')
-)
-
-
-@app.before_request
-def log_request():
-    """Log incoming requests."""
-    logger.info(
-        f"Incoming request: {request.method} {request.path} | "
-        f"Headers: {dict(request.headers)} | "
-        f"Body: {request.get_json(silent=True)}"
-    )
-
-# Middleware to block suspicious requests and fingerprint bots
-@app.before_request
-def block_suspicious_requests():
-    origin = request.headers.get("X-Real-Ip") or request.headers.get("Origin")
-    if origin:
-        origin = origin.split(",")[0].strip()  # Normalize origin
-        if not origin.startswith("http://") and not origin.startswith("https://"):
-            origin = f"https://{origin}"  # Add schema if missing
-
-    heroku_secret = request.headers.get("X-Heroku-Auth")
-    user_agent = request.headers.get("User-Agent", "").lower()
-    ip_address = request.headers.get("X-Real-Ip", request.remote_addr)
-    ip_address = ip_address.split(",")[0].strip()  # Normalize ip
-
-
-
-    logger.info(f"X-Real-IP: {ip_address}")
-    timestamp = datetime.utcnow()
-
-    # 1. Check Trusted Heroku App Header
-    if heroku_secret == SK:  # Replace with your Heroku secret
-        app.logger.info(f"Trusted request from Heroku app.")
-        return  # Allow the request
-
-    # 2. Block Suspicious Patterns in Request Paths
-    for pattern in AIS.SUSPICIOUS_PATTERNS:
-        if re.search(pattern, request.path, re.IGNORECASE):
-            app.logger.info(f"Blocked suspicious request to: {request.path}")
-            fingerprint_bot(request, ip_address, user_agent)  # Fingerprint the suspicious bot
-            abort(403)  # Return a 403 Forbidden response
-
-    # 3. Block Suspicious User-Agent Strings
-    for pattern in AIS.BLOCKED_USER_AGENTS:
-        if re.search(pattern, user_agent, re.IGNORECASE):
-            app.logger.info(f"Blocked suspicious User-Agent: {user_agent}")
-            fingerprint_bot(request, ip_address, user_agent)  # Fingerprint the suspicious bot
-            abort(403)
-
-    # 4. Rate Limiting
-    RATE_LIMIT[ip_address].append(timestamp)
-    # Keep only requests in the last minute
-    RATE_LIMIT[ip_address] = [t for t in RATE_LIMIT[ip_address] if t > timestamp - timedelta(minutes=1)]
-    if len(RATE_LIMIT[ip_address]) > AIS.MAX_REQUESTS_PER_MINUTE:  # Set your rate limit
-        app.logger.info(f"Rate limit exceeded for IP: {ip_address}")
-        fingerprint_bot(request, ip_address, user_agent)  # Fingerprint the suspicious bot
-        abort(429)  # Too Many Requests
-
-    # 5. Geo-Location Blocking
     try:
-        with geoip2.database.Reader('/path/to/GeoLite2-City.mmdb') as reader:
-            geo_data = reader.city(ip_address)
-            country = geo_data.country.iso_code
-            if country in AIS.BLOCKED_COUNTRIES:
-                app.logger.info(f"Blocked request from blocked country: {country}")
-                fingerprint_bot(request, ip_address, user_agent)  # Fingerprint the suspicious bot
-                abort(403)
+        new_data = retriever.fetch_time_series(ticker=ticker, interval=interval, existing_df=None, start_time=start_time)
+        if new_data is None or new_data.empty:
+            logger.warning(f"No new data found for {ticker}.")
+            return
     except Exception as e:
-        app.logger.error(f"Geo-location lookup failed: {e}")
+        logger.error(f"Error fetching time-series data for {ticker}: {e}")
+        return
 
-    # 6. Honeypot Detection
-    if request.path in AIS.HONEYPOT_ENDPOINTS:
-        app.logger.warning(f"Honeypot triggered by IP: {ip_address}")
-        fingerprint_bot(request, ip_address, user_agent)  # Fingerprint the suspicious bot
-        abort(403)
+    # --- Batching with Overlap ---
+    # Find the largest window in your metrics (adjust as needed!)
+    largest_window = 30  # e.g., for volatility_30, adjust if you have a larger window
+    n = len(new_data)
+    for i in range(0, n, batch_size):
+        # Always include previous largest_window-1 rows for context
+        start_idx = max(0, i - largest_window + 1)
+        end_idx = min(i + batch_size, n)
+        batch = new_data.iloc[start_idx:end_idx].copy()
 
-    # 7. Header Inconsistencies
-    x_forwarded_for = request.headers.get("X-Forwarded-For")
-    x_real_ip = request.headers.get("X-Real-Ip")
-    if x_forwarded_for and x_real_ip and x_real_ip not in x_forwarded_for:
-        app.logger.info(f"Blocked request with inconsistent headers from IP: {ip_address}")
-        fingerprint_bot(request, ip_address, user_agent)  # Fingerprint the suspicious bot
-        abort(403)
+        # Compute metrics
+        try:
+            metrics_df = compute_batch_metrics(batch)
+        except Exception as e:
+            logger.error(f"Error computing metrics for {ticker} batch {i}-{end_idx}: {e}")
+            continue
 
-    # 8. TLS/SSL Analysis (Optional)
-    # You can analyze TLS/SSL protocol and cipher suite here if needed
-    # Example: Check for outdated TLS versions or weak cipher suites
+        # Only insert the "new" rows for this batch (not the overlap)
+        insert_start = i if i > 0 else 0
+        insert_rows = metrics_df.iloc[insert_start - start_idx:end_idx - start_idx]
+        REQUIRED_FIELDS = ['timestamp', 'open', 'close', 'high', 'low', 'volume']
 
-    # 9. Block All Origins
-    if gateway == 'closed':
-        if origin not in ALLOWED_ORIGINS:
-            app.logger.info(f"Blocked request from disallowed origin: {origin}")
-            abort(403)
+        for _, row in insert_rows.iterrows():
 
-    # 10. Log All Requests for Monitoring
-    app.logger.info(f"Request Path: {request.path}, User-Agent: {user_agent}, IP: {ip_address}")
+            row['timestamp'] = int(row['timestamp'])
+            if any(pd.isnull(row[field]) for field in REQUIRED_FIELDS):
+                logger.error(f"Skipping row with missing REQUIRED values: {row}")
+                continue
+            # Insert historical record
+            historical_record = insert_historical_record(
+                ticker_symbol=ticker,
+                timestamp=int(row['timestamp']),
+                open_=float(row['open']),
+                close_=float(row['close']),
+                high_=float(row['high']),
+                low_=float(row['low']),
+                volume_=int(row['volume'])
+            )
+
+            if not historical_record:
+                logger.error(
+                    f"Skipping computed metrics and market state for {ticker} at {row['timestamp']} due to failed historical insert.")
+                continue
+
+            try:
+                # Build computed_metrics dict using your schema
+
+                metric_cols = [
+                    'sma', 'ema', 'dema', 'tema', 'wma', 'trima',
+                    'kama', 'mama', 't3', 'log_return', 'volatility_30', 'vwap',
+                    'macd', 'macdext', 'signal_line', 'rsi', 'stoch', 'stochrsi',
+                    'willr', 'adx', 'adxr', 'apo', 'ppo', 'mom', 'bop', 'cci', 'cmo',
+                    'roc', 'rocr', 'aroon', 'aroonosc', 'mfi', 'trix', 'ultosc',
+                    'price_change', 'price_change_pct', 'hourly_return', 'volatility',
+                    'historical_volatility', 'realized_volatility', 'typical_price',
+                    'sma_20', 'ema_20', 'dema_20', 'tema_20', 'wma_20', 'trima_20',
+                    'macd_signal', 'macd_hist', 'bollinger_upper', 'bollinger_lower',
+                    'bollinger_width', 'obv', 'cmf', 'z_score', 'ewma_score',
+                    'sharpe_ratio', 'sortino_ratio', 'max_drawdown', 'var', 'cvar',
+                    'stoch_k', 'stoch_d', 'fama'
+                ]
+                computed_metrics_json = {}
+                for col in metric_cols:
+                    val = row.get(col, None)
+                    if isinstance(val, (np.floating, float)) and (np.isnan(val) or val is None):
+                        computed_metrics_json[col] = None
+                    else:
+                        computed_metrics_json[col] = float(val) if val is not None else None
+
+                cm_obj, cm_data = insert_computed_metrics(historical_record, computed_metrics_json)
+
+                ticker_orm = check_for_ticker(ticker)
+
+                #if cm_obj and cm_data:
+                #    robust_process_and_store_market_states(ticker_orm, historical_record, cm_data)
+
+            except Exception as e:
+                logger.error(f"Error inserting record for {ticker} at timestamp {row['timestamp']}: {e}")
+                logger.error(f"Row data: {row}")
 
 
-@app.before_request
-def handle_options_preflight():
-    if request.method == 'OPTIONS':
-        response = app.make_response('')
-        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        return response, 204
+    # Update last processed timestamp
+    try:
+        latest_timestamp = new_data['timestamp'].max()
+        update_last_processed_timestamp(ticker, latest_timestamp)
+        logger.info(f"Updated last processed timestamp for {ticker} to {latest_timestamp}.")
+    except Exception as e:
+        logger.error(f"Error updating last processed timestamp for {ticker}: {e}")
+
+    # ---- AGGREGATE AND EMBED ----
+    try:
+        from xyz.finazon_service.aggregate_embeddings import process_aggregated_embeddings  # Adjust the import as needed
+        logger.info(f"Starting multi-scale aggregation and embedding for {ticker}...")
+        process_aggregated_embeddings(ticker)
+        logger.info(f"Aggregation and embedding complete for {ticker}.")
+    except Exception as e:
+        logger.error(f"Error during aggregation and embedding for {ticker}: {e}")
+
+
 
 
 @app.route('/')
-def index():
-    logger.info("Serving index page.")
-    return render_template('index.html')
-
-
-@app.after_request
-def after_request(response):
-    origin = request.headers.get('Origin')
-    if origin in ALLOWED_ORIGINS or '*' in ALLOWED_ORIGINS:
-        response.headers.update({
-            'Access-Control-Allow-Origin': origin or '*',
-            'Access-Control-Allow-Credentials': 'true',
-            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
-            'Access-Control-Expose-Headers': 'Content-Type, Authorization',
-            'Access-Control-Max-Age': '86400'
-        })
-    return response
-
-
-# Socket event handlers
-@socketio_app.on('connect')
-def handle_connect():
-    #logger.info(f"Client connected: {request.sid}")
-    emit('connect', {'status': 'connected', 'sid': request.sid})
-
-
-@socketio_app.on('disconnect')
-def handle_disconnect(data=None):
-    #logger.info(f"Client disconnected: {request.sid}")
-    x = 100
-
-
-@socketio_app.on('typing')
-def handle_typing(data):
-    try:
-        emit('typing', data, broadcast=True, include_self=False)
-    except Exception as e:
-        logger.error(f"Error in typing event: {e}")
-        emit('error', {'message': 'Failed to broadcast typing status'})
-
-
-@socketio_app.on('stop_typing')
-def handle_stop_typing(data):
-    try:
-        emit('stop_typing', data, broadcast=True, include_self=False)
-    except Exception as e:
-        logger.error(f"Error in stop_typing event: {e}")
-        emit('error', {'message': 'Failed to broadcast stop typing status'})
-
-
-@socketio_app.on_error()
-def error_handler(e):
-    logger.error(f"SocketIO error: {e}")
-    return {"error": str(e)}
-
-
-@socketio_app.on_error_default
-def default_error_handler(e):
-    logger.error(f"SocketIO default error: {e}")
-    return {"error": str(e)}
-
-
-@app.errorhandler(Exception)
-def handle_error(error):
-    logger.error(f"An error occurred: {error}")
-    response = jsonify({
-        "error": str(error),
-        "message": "An internal error occurred"
-    })
-    return response, 500
+def hello_world():
+    logger.info("Received request to root endpoint.")
+    return 'Hello World!'
 
 
 if __name__ == '__main__':
-
-    if config.Config.production:
-        socketio_app.run(
-            app,
-            host='0.0.0.0',
-            port=int(os.environ.get('PORT', 5000)),  # Use Heroku's assigned port
-            debug=False,
-            use_reloader=False,
-            cors_allowed_origins=ALLOWED_ORIGINS
-        )
-    else:
-        socketio_app.run(
-            app,
-            host='0.0.0.0',
-            port=5000,
-            debug=True,
-            ssl_context=ssl_context,
-            cors_allowed_origins=ALLOWED_ORIGINS
-        )
-
+    logger.info("Starting Flask application.")
+    app.run()

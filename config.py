@@ -15,7 +15,7 @@ logger = logging.getLogger('logfile')
 logger.setLevel(logging.DEBUG)
 
 # Add a StreamHandler (console) to log at DEBUG level
-console_handler = logging.StreamHandler(sys.stdout)  # Use `sys.stdout` for compatibility with Heroku
+console_handler = logging.StreamHandler()#sys.stdout)  # Use `sys.stdout` for compatibility with Heroku
 console_handler.setLevel(logging.DEBUG)  # Log DEBUG and above to console
 
 # Define a log format
@@ -28,25 +28,16 @@ console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
 
-PUBLIC = False
-if PUBLIC:
-    gateway = 'open'
-else:
-    gateway = 'closed'
-print(f"Gateway: {gateway}")
-
-
 def log(msg):
     logger.debug(msg)
     print(msg)
 
 class DATABASE:
-    host = os.getenv('DB_HOST')
-    user = os.getenv('DB_USER')
-    password = os.getenv('DB_PASSWORD')
-    name = os.getenv('DB_NAME')
-    pinecone_api_key = os.getenv('PINECONE_API_KEY')
-    pinecone_host = os.getenv('PINECONE_HOST')
+    DB_HOST = os.getenv('DB_HOST')
+    DB_USER = os.getenv('DB_USER')
+    DB_PASSWORD = os.getenv('DB_PASSWORD')
+    DB_NAME = os.getenv('DB_NAME')
+
 
 
 class AIS:
@@ -108,11 +99,11 @@ class OAI:
     # OpenAI Client
     client = None
     # Models
-    gpt4o = "gpt-4o"
-    gpt4o_mini = "gpt-4o-mini"
-    embedding3 = "text-embedding-3-large"
+    gpt4o = "gpt-4.1"
+    gpt4o_mini = "o4-mini"
+    embedding3 = "text-embedding-3-small"
     dall_e_3 = "dall-e-3"
-    tts = "tts-1"
+    tts = "gpt-4o-mini-tts"
     tts_hd = 'tts-1-hd'
     whisper = "whisper-1"
     moderation = "text-moderation-latest"
@@ -124,3 +115,6 @@ OAI.client = openai_client
 PINECONE_API_KEY = os.getenv('PINECONE_API_KEY')
 PINECONE_HOST = os.getenv('PINECONE_HOST')
 SK = os.getenv('SKELETON_KEY')
+FINAZON_KEY = os.getenv('FINAZON_KEY')
+POLYGON_KEY = os.getenv('POLYGON_KEY')
+AV_KEY = os.getenv('AV_KEY')
