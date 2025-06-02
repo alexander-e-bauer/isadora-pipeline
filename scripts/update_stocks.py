@@ -4,7 +4,6 @@ from celery_app import celery_app
 from xyz.finazon_service.sql_service import (
     Session,
     check_for_ticker,
-    robust_process_and_store_market_states
 )
 from app import update_time_series_data, fetch_and_store_ticker_data
 from tasks.tasks import update_ticker_data
@@ -55,4 +54,5 @@ def main():
         raise
 
 if __name__ == "__main__":
+    logger.info("Heroku Scheduler triggered update_stocks.py")
     main()
