@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "option-overlays-engine"
+version = "0.1.0"
+description = "Option Overlays Engine — FastAPI data pipeline"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "postgres: requires a live Postgres at localhost:5432",
+]
