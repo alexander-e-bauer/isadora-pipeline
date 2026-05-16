@@ -119,3 +119,8 @@ SK = os.getenv('SKELETON_KEY')
 FINAZON_KEY = os.getenv('FINAZON_KEY')
 POLYGON_KEY = os.getenv('POLYGON_KEY')
 AV_KEY = os.getenv('AV_KEY')
+
+# Fernet key used by server's encrypted columns — engine reads the same key
+# to decrypt PII stored in tenant tables (email, name, external_account_id).
+# Must be a valid URL-safe base64-encoded 32-byte key (Fernet.generate_key()).
+ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY')
