@@ -299,17 +299,42 @@ def test_engine_can_emit_event(db_session):
 # 3. test_engine_event_hash_matches_server_implementation
 # ---------------------------------------------------------------------------
 
+def _load_live_server_compute_hash():
+    """Load the actual `_compute_event_hash` function from server/app/events/emit.py.
+
+    This is the cross-app verification anchor: we compare engine's
+    implementation against the *live* server function, not a copy of it.
+    Any change to server's hash function that engine doesn't mirror will
+    fail this test the moment it runs.
+
+    Path: ../server-fastapi-wt/app/events/emit.py — the sibling worktree on
+    the server side. If that path doesn't exist (e.g. the worktree was
+    removed), fall back to the inline copy with a clear warning so the test
+    is still meaningful in CI without the full multi-worktree layout.
+    """
+    server_emit_path = (
+        Path(__file__).resolve().parents[2] / "server-fastapi-wt" / "app" / "events" / "emit.py"
+    )
+    if not server_emit_path.exists():
+        import warnings
+        warnings.warn(
+            f"Server emit.py not found at {server_emit_path}; "
+            "falling back to inline copy. Cross-app verification is weakened.",
+            stacklevel=2,
+        )
+        return _server_compute_hash_impl
+
+    mod = _load_module(server_emit_path, "_live_server_emit")
+    return mod._compute_event_hash
+
+
 def test_engine_event_hash_matches_server_implementation():
-    """Engine and server _compute_event_hash produce identical digests.
+    """Engine and the LIVE server _compute_event_hash produce identical digests.
 
-    Uses an inline copy of server's hash function (see _server_compute_hash_impl
-    above) to verify without importing server's package, which would pull in
-    pandas, Pydantic Settings, etc.  The inline copy IS the contract — any
-    divergence between it and server/app/events/emit.py is itself a bug.
-
-    This guarantees the chain is portable: an event emitted by engine can
-    serve as prev_event_hash for a subsequent event emitted by server (and
-    vice-versa) without breaking the chain.
+    Loads server/app/events/emit.py directly via importlib and compares
+    its `_compute_event_hash` against engine's. If server's hash function
+    diverges in any way (new field added, separator changed, key reordered),
+    this test fails immediately — that's the chain-portability guarantee.
     """
     kwargs = dict(
         kind="user.registered",
@@ -320,15 +345,28 @@ def test_engine_event_hash_matches_server_implementation():
         created_at_iso="2026-01-01T00:00:00+00:00",
     )
 
+    live_server_hash = _load_live_server_compute_hash()
     engine_hash = engine_compute_hash(**kwargs)
-    server_hash = _server_compute_hash_impl(**kwargs)
+    server_hash = live_server_hash(**kwargs)
 
     assert engine_hash == server_hash, (
-        f"Hash mismatch between engine and server implementations:\n"
+        f"Hash mismatch between engine and LIVE server implementations:\n"
         f"  engine: {engine_hash}\n"
-        f"  server: {server_hash}"
+        f"  server: {server_hash}\n"
+        "Engine's xyz/tenant/events.py is out of sync with "
+        "server-fastapi-wt/app/events/emit.py — update engine's mirror."
     )
     assert len(engine_hash) == 64, "SHA-256 hex digest must be 64 chars"
+
+    # Belt-and-suspenders: also assert the inline copy stays in sync. If this
+    # ever fails, the inline copy is stale even though the live test still
+    # works — fix the inline copy so the fallback path remains accurate.
+    inline_hash = _server_compute_hash_impl(**kwargs)
+    assert inline_hash == server_hash, (
+        "Inline copy of _compute_event_hash has drifted from the live "
+        "server function. Update _server_compute_hash_impl in this test "
+        "to keep the fallback path accurate."
+    )
 
 
 # ---------------------------------------------------------------------------
