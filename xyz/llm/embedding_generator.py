@@ -20,18 +20,46 @@ log = config.log
 OAI = config.OAI
 
 
-def num_tokens(text):
+def num_tokens(text, model="gpt-4"):
+    """
+    Count the number of tokens in a text string for a given model.
+
+    Args:
+        text (str): The text to count tokens for
+        model (str): The model name (defaults to gpt-4)
+
+    Returns:
+        int: Number of tokens
+    """
     try:
-        # Get the encoding for the model
-        encoding = tiktoken.encoding_for_model('gpt-4o')
-        # Encode the text to count tokens
-        encoded_text = encoding.encode(text, disallowed_special=())
-        token_count = len(encoded_text)
-        print(f"Token count: {token_count}")
-        return token_count
+        # Map model names to supported encodings
+        model_to_encoding = {
+            "gpt-4": "cl100k_base",
+            "gpt-4o": "cl100k_base",
+            "gpt-4o-mini": "cl100k_base",
+            "gpt-4.1": "cl100k_base",
+            "gpt-4.1-nano": "cl100k_base",
+            "gpt-4-32k": "cl100k_base",
+            "gpt-3.5-turbo": "cl100k_base",
+            "gpt-3.5-turbo-16k": "cl100k_base",
+            "text-embedding-ada-002": "cl100k_base",
+            "text-embedding-3-small": "cl100k_base",
+            "text-embedding-3-large": "cl100k_base",
+        }
+
+        # Get the encoding name, default to cl100k_base for unknown models
+        encoding_name = model_to_encoding.get(model, "cl100k_base")
+
+        # Get the encoding
+        encoding = tiktoken.get_encoding(encoding_name)
+
+        # Count tokens
+        return len(encoding.encode(str(text)))
+
     except Exception as e:
-        print(f"Error in num_tokens: {e}")
-        return None
+        print(f"Error counting tokens: {e}")
+        # Fallback: rough estimate (1 token ≈ 4 characters for GPT models)
+        return len(str(text)) // 4
 
 
 def save_text_to_file(text, file_path):
@@ -211,9 +239,41 @@ def save_embeddings(directory, output_path):
 
 
 
-directory = "xyz/llm/knowledge_sources/personal"
-output_path = "xyz/llm/embeddings/resume_test.csv"
+#directory = "xyz/llm/knowledge_sources/personal"
+#output_path = "xyz/llm/embeddings/resume_test.csv"
 
 #save_embeddings(directory, output_path)
 
 #df = read_embedding('xyz/llm/embeddings/resume_test.csv')
+
+def main():
+    """
+    Main function to test the num_tokens function.
+    """
+    # Load the encoding for the GPT-4 model
+    model_name = "gpt-4"
+    encoding = tiktoken.encoding_for_model(model_name)
+
+    # Define test cases
+    test_cases = [
+        "The quick brown fox jumps over the lazy dog",  # Normal sentence
+        "Hello, World!",  # A greeting with punctuation
+        "This is a test case with 8 words in total",  # Count tokens
+        "",  # Empty input
+        "SingleWord",  # A single token
+        "Multiple    spaces    between words",  # Sentence with extra spaces
+        " punctuations!shouldn't. affect: counting,tokens ",  # Sentence with punctuation
+    ]
+
+    print(f"Running tests for num_tokens using encoding for model: {model_name}")
+    for i, input_text in enumerate(test_cases, 1):
+        try:
+            result = num_tokens(input_text, encoding)
+            print(f"Test #{i}: PASSED | Input: '{input_text}' | Tokens: {result}")
+        except Exception as e:
+            print(f"Test #{i}: FAILED | Input: '{input_text}' | Unexpected error: {e}")
+
+    print("Testing completed.")
+
+if __name__ == "__main__":
+    main()

@@ -51,3 +51,8 @@ instance/
 # Dependencies
 node_modules/
 /xyz/modules/llm/embedding_tools/embeddings/code_metadata.xlsx
+
+# Secrets — never commit
+env.yaml
+trusty-spanner-*.json
+*-service-account*.json

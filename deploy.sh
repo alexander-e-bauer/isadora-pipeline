@@ -1,57 +1,33 @@
 #!/bin/bash
 
-# Define colors using tput, fallback to no color if tput is unavailable
-BOLD=$(tput bold 2>/dev/null || echo "")
-GREEN=$(tput setaf 2 2>/dev/null || echo "")  # Green text
-BLUE=$(tput setaf 4 2>/dev/null || echo "")  # Blue text
-PURPLE=$(tput setaf 5 2>/dev/null || echo "") # Purple text
-GRAY=$(tput setaf 8 2>/dev/null || echo "")  # Gray text
-RESET=$(tput sgr0 2>/dev/null || echo "")   # Reset to default colors
+# --- CONFIGURE THESE VARIABLES ---
+PROJECT_ID="trusty-spanner-446802-p2"
+REGION="us-central1"
+SERVICE_NAME="isadora-pipeline"
+CLOUD_SQL_CONNECTION_NAME="trusty-spanner-446802-p2:us-central1:isadora-v2-db"
+IMAGE="us-central1-docker.pkg.dev/$PROJECT_ID/isadora-pipeline-repo/$SERVICE_NAME"
 
-# Function to print step messages
-print_step() {
-  local step_msg=$1
-  echo -e "${BLUE}[STEP] ${step_msg}${RESET}"
-}
 
-# Function to print success messages
-print_success() {
-  local success_msg=$1
-  echo -e "${GREEN}[SUCCESS] ${success_msg}${RESET}"
-}
+# --- ENSURE .env FILE EXISTS ---
+if [ ! -f .env ]; then
+  echo ".env file not found! Please create one before deploying."
+  exit 1
+fi
 
-# Function to print separator lines
-print_separator() {
-  echo -e "${GRAY}----------------------------------------${RESET}"
-}
+# --- AUTHENTICATE WITH GCP ---
+gcloud config set project $PROJECT_ID
 
-# Begin script
-print_separator
-echo -e "${PURPLE}${BOLD}🚀 Starting Git Workflow...${RESET}"
-print_separator
+# --- BUILD AND PUSH DOCKER IMAGE ---
+gcloud builds submit --tag $IMAGE
 
-# Step 1: Staging changes
-print_step "1. Staging all changes..."
-git add .
-print_success "All changes staged successfully!"
-print_separator
-# Step 2: Reading commit message
-print_step "2. Prompting for commit message..."
+# --- READ ENV VARS FROM .env AND DEPLOY TO CLOUD RUN ---
+gcloud run deploy $SERVICE_NAME \
+  --image $IMAGE \
+  --platform managed \
+  --region $REGION \
+  --add-cloudsql-instances $CLOUD_SQL_CONNECTION_NAME \
+  --env-vars-file env.yaml \
+  --allow-unauthenticated
 
-commit_message="Update"
-print_success "Commit message set: '${commit_message}'"
-print_separator
-# Step 3: Committing changes
-print_step "3. Committing changes with message: '${commit_message}'..."
-git commit -m "$commit_message"
-print_success "Changes committed successfully!"
-print_separator
-# Step 4: Pushing changes to Heroku
-print_step "4. Pushing changes to Heroku (https://io.isadora.ai)..."
-git push heroku master
-print_success "Changes pushed successfully to Heroku!"
-
-# End script
-print_separator
-echo -e "${GREEN}${BOLD}✅ Workflow complete! All steps completed successfully!${RESET}"
-print_separator
+# --- PRINT SERVICE URL ---
+gcloud run services describe $SERVICE_NAME --region $REGION --format "value(status.url)"

@@ -1,20 +1,21 @@
 
 
-# Scale workers
-heroku ps:scale web=1 worker=1 beat=1
+docker run -d \
+  -p 127.0.0.1:5432:5432 \
+  gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.16.0 \
+  --address 0.0.0.0 \
+  --port 5432 \
+  trusty-spanner-446802-p2:us-central1:isadora-v2-db
 
 
-# Start Celery:
-celery -A celery_app worker -B --loglevel=info
 
-# View logs
-heroku logs --tail
+python -m spacy download en_core_web_sm
 
-# Check running processes
-heroku ps
 
-# Access Heroku dashboard for more detailed monitoring
-heroku open
+
+
+curl -X POST http://127.0.0.1:8000/run-pipeline   -H "Authorization: Bearer 0d287b4180d5e8c595c59b71aee3f97f0ace246c997f38c796ac28b7c1e1d23f"   -H "Content-Type: application/json"   -d '{"message": "Test pipeline run", "trigger_source": "manual_test"}'
+
 
 # Postgres Commands:
 

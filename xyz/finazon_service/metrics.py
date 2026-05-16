@@ -162,235 +162,10 @@ def calculate_ultosc(high, low, close, s1=7, s2=14, s3=28):
     return ultosc.values
 
 
-def calculate_mahalanobis_distance(df):
-    """Calculate Mahalanobis distance for each point in the dataframe."""
-    # Select features for multivariate analysis
-    features = df[['close', 'volume', 'rsi', 'macd']].copy()
-
-    # Calculate mean vector and covariance matrix
-    mean_vec = features.mean().values
-    cov_matrix = features.cov().values
-
-    # Calculate inverse of covariance matrix (handle potential singularity)
-    try:
-        inv_cov_matrix = np.linalg.inv(cov_matrix)
-    except np.linalg.LinAlgError:
-        # Use pseudoinverse if matrix is singular
-        inv_cov_matrix = np.linalg.pinv(cov_matrix)
-
-    # Calculate Mahalanobis distance for each point
-    mahalanobis_distances = []
-    for i, row in features.iterrows():
-        x = row.values
-        dist = np.sqrt((x - mean_vec).T.dot(inv_cov_matrix).dot(x - mean_vec))
-        mahalanobis_distances.append(dist)
-
-    return np.array(mahalanobis_distances)
-
-
-def calculate_cusum(df, column='close', k=0.5, h=5, reference_window=20):
-    """
-    Calculate CUSUM (Cumulative Sum) for anomaly detection.
-
-    Parameters:
-    - df: DataFrame containing time series data
-    - column: Column to monitor for changes
-    - k: Reference value (usually 0.5 standard deviations)
-    - h: Decision threshold
-    - reference_window: Window size for calculating reference statistics
-    """
-    series = df[column].values
-    cusums = np.zeros(len(series))
-
-    # Calculate mean and standard deviation from reference window
-    reference_mean = series[:reference_window].mean()
-    reference_std = series[:reference_window].std()
-
-    # Normalize data
-    normalized_series = (series - reference_mean) / reference_std
-
-    # Calculate CUSUM
-    pos_cusum = 0
-    neg_cusum = 0
-
-    for i in range(len(normalized_series)):
-        # Positive CUSUM
-        pos_cusum = max(0, pos_cusum + normalized_series[i] - k)
-        # Negative CUSUM
-        neg_cusum = max(0, neg_cusum - normalized_series[i] - k)
-
-        # Store the maximum of positive and negative CUSUM
-        cusums[i] = max(pos_cusum, neg_cusum)
-
-        # Reset if threshold is exceeded
-        if pos_cusum > h or neg_cusum > h:
-            pos_cusum = 0
-            neg_cusum = 0
-
-    return cusums
-
-
-def calculate_cosine_similarity(df, pattern_length=20):
-    """
-    Calculate cosine similarity between current pattern and historical patterns.
-
-    Parameters:
-    - df: DataFrame containing time series data
-    - pattern_length: Length of pattern to compare
-    """
-    close_prices = df['close'].values
-    similarities = np.zeros(len(close_prices))
-
-    # Need at least 2*pattern_length data points
-    if len(close_prices) < 2 * pattern_length:
-        return similarities
-
-    # Use the first pattern_length points as reference
-    reference_pattern = close_prices[:pattern_length]
-
-    # Normalize reference pattern
-    reference_norm = np.linalg.norm(reference_pattern)
-    if reference_norm > 0:
-        reference_pattern = reference_pattern / reference_norm
-
-    # Calculate rolling cosine similarity
-    for i in range(pattern_length, len(close_prices)):
-        current_window = close_prices[i - pattern_length:i]
-        current_norm = np.linalg.norm(current_window)
-
-        if current_norm > 0:
-            current_window = current_window / current_norm
-            similarities[i] = np.dot(reference_pattern, current_window)
-        else:
-            similarities[i] = 0
-
-    return similarities
-
-
-def calculate_hurst_exponent(df, column='close', max_lag=100):
-    """
-    Calculate Hurst exponent to determine if a time series is mean-reverting, random, or trending.
-
-    Parameters:
-    - df: DataFrame containing time series data
-    - column: Column to analyze
-    - max_lag: Maximum lag for calculation
-    """
-    series = df[column].values
-    lags = range(2, min(max_lag, len(series) // 4))
-
-    # Calculate the array of the variances of the lagged differences
-    tau = [np.sqrt(np.std(np.subtract(series[lag:], series[:-lag]))) for lag in lags]
-
-    # Calculate the slope of the log plot -> the Hurst Exponent
-    reg = np.polyfit(np.log(lags), np.log(tau), 1)
-
-    return reg[0]  # Hurst exponent is the slope
-
-
-def calculate_approx_entropy(df, column='close', m=2, r=0.2):
-    """
-    Calculate approximate entropy, which measures the regularity and unpredictability of fluctuations.
-
-    Parameters:
-    - df: DataFrame containing time series data
-    - column: Column to analyze
-    - m: Length of compared runs of data
-    - r: Filtering level, typically 0.2 * std(data)
-    """
-    series = df[column].values
-    N = len(series)
-
-    if N < m + 1:
-        return 0
-
-    # Normalize r
-    r = r * np.std(series)
-
-    # Create a matrix of all m-length subsequences
-    def create_patterns(m_length):
-        patterns = np.zeros((N - m_length + 1, m_length))
-        for i in range(N - m_length + 1):
-            patterns[i] = series[i:i + m_length]
-        return patterns
-
-    # Calculate the correlation sum
-    def correlation_sum(patterns, m_length):
-        N_m = len(patterns)
-        count = np.zeros(N_m)
-
-        for i in range(N_m):
-            # Calculate distances between pattern i and all other patterns
-            distances = np.max(np.abs(patterns - patterns[i]), axis=1)
-            # Count patterns within tolerance r
-            count[i] = np.sum(distances <= r) / N_m
-
-        return np.sum(np.log(count)) / N_m
-
-    # Calculate for m and m+1
-    phi_m = correlation_sum(create_patterns(m), m)
-    phi_m_plus_1 = correlation_sum(create_patterns(m + 1), m + 1)
-
-    return phi_m - phi_m_plus_1
-
-
-def calculate_regime_probability(df, column='close', n_regimes=2, window=100):
-    """
-    Calculate regime probability using a Hidden Markov Model.
-
-    Parameters:
-    - df: DataFrame containing time series data
-    - column: Column to analyze
-    - n_regimes: Number of regimes/states to identify
-    - window: Rolling window size for calculation
-    """
-    try:
-        from hmmlearn import hmm
-    except ImportError:
-        logger.warning("hmmlearn not installed. Install with: pip install hmmlearn")
-        # Return placeholder values if hmmlearn is not available
-        return np.zeros(len(df))
-
-    series = df[column].values
-    returns = np.diff(np.log(series))
-
-    # Reshape for HMM (requires 2D array)
-    returns = returns.reshape(-1, 1)
-
-    # Initialize probabilities array
-    regime_probs = np.zeros((len(df), n_regimes))
-
-    # Use rolling window to calculate regime probabilities
-    for i in range(window, len(returns) + 1):
-        # Extract window
-        window_data = returns[i - window:i]
-
-        try:
-            # Fit HMM model
-            model = hmm.GaussianHMM(n_components=n_regimes, covariance_type="full", n_iter=100)
-            model.fit(window_data)
-
-            # Predict hidden states
-            hidden_states = model.predict(window_data)
-
-            # Calculate probability of being in each regime
-            last_state = hidden_states[-1]
-            regime_probs[i, last_state] = 1.0
-        except:
-            # In case of convergence issues
-            pass
-
-    # For the first window points, use the first calculated probability
-    first_valid_prob = next((p for p in regime_probs if np.any(p)), np.zeros(n_regimes))
-    regime_probs[:window] = np.tile(first_valid_prob, (window, 1))
-
-    return regime_probs
-
-
 def compute_batch_metrics(
     df: pd.DataFrame,
     ma_windows: list[int] = (20,),
-    vol_window: int = 30,
+    vol_window: int = 48,
     rsi_window: int = 14
 ) -> pd.DataFrame:
     """
@@ -423,7 +198,7 @@ def compute_batch_metrics(
         out["log_return"]
         .rolling(window=vol_window, min_periods=2)
         .std()
-        * np.sqrt(252 * 24 * 4)
+        * np.sqrt(252 * 24 * 2)
     )
 
     # --- Typical price and VWAP ---
@@ -458,7 +233,7 @@ def compute_batch_metrics(
     out["trima"] = out[f"trima_{main_win}"]
 
     # --- Volatility metrics (example windows) ---
-    out['historical_volatility'] = out['log_return'].rolling(window=30).std() * np.sqrt(252)
+    out['historical_volatility'] = out['log_return'].rolling(window=48).std() * np.sqrt(252)
     out['realized_volatility'] = out['log_return'].rolling(window=14).std() * np.sqrt(252)
 
     # --- MACD and relatives ---
@@ -489,22 +264,22 @@ def compute_batch_metrics(
 
     # --- Sharpe and Sortino ratios (example: 30 window) ---
     returns = out['log_return']
-    out['sharpe_ratio'] = returns.rolling(window=30).mean() / returns.rolling(window=30).std() * np.sqrt(252)
+    out['sharpe_ratio'] = returns.rolling(window=48).mean() / returns.rolling(window=48).std() * np.sqrt(252)
     downside_returns = returns.copy()
     downside_returns[downside_returns > 0] = 0
-    out['sortino_ratio'] = returns.rolling(window=30).mean() / downside_returns.rolling(window=30).std() * np.sqrt(252)
+    out['sortino_ratio'] = returns.rolling(window=48).mean() / downside_returns.rolling(window=48).std() * np.sqrt(252)
 
     # --- Max drawdown ---
-    rolling_max = out['close'].rolling(window=30, min_periods=1).max()
+    rolling_max = out['close'].rolling(window=48, min_periods=1).max()
     drawdown = (out['close'] / rolling_max - 1.0)
-    out['max_drawdown'] = drawdown.rolling(window=30).min()
+    out['max_drawdown'] = drawdown.rolling(window=48).min()
 
     # --- Value at Risk (VaR) and Conditional VaR (CVaR) ---
-    out['var'] = returns.rolling(window=30).quantile(0.05)
+    out['var'] = returns.rolling(window=48).quantile(0.05)
     def rolling_cvar(x):
         var_value = np.percentile(x, 5)
         return x[x <= var_value].mean() if len(x[x <= var_value]) > 0 else var_value
-    out['cvar'] = returns.rolling(window=30).apply(rolling_cvar, raw=True)
+    out['cvar'] = returns.rolling(window=48).apply(rolling_cvar, raw=True)
 
     # --- ROC (using main_win) ---
     out['roc'] = out['close'].pct_change(periods=main_win) * 100
@@ -538,8 +313,8 @@ def compute_batch_metrics(
     out['kama'] = calculate_kama(close)
     mama, fama = calculate_mama(close)
     t3 = calculate_t3(close)
-    print("check lengths of mama, fama, t3:")
-    print(len(out), len(mama), len(fama), len(t3))
+    #print("check lengths of mama, fama, t3:")
+    #print(len(out), len(mama), len(fama), len(t3))
 
     out["mama"] = pad_to_length(mama, len(out))
     out["fama"] = pad_to_length(fama, len(out))
@@ -575,7 +350,7 @@ def compute_batch_metrics(
     # --- Clean up infinities ---
     out.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-    logger.debug(f"Compute Batch Metrics Out:\n Timestamp: {out['timestamp']} {out.tail}")
+    #logger.debug(f"Compute Batch Metrics Out:\n Timestamp: {out['timestamp']} {out.tail}")
     return out
 
 

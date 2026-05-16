@@ -5,7 +5,6 @@ from finazon_grpc_python.time_series_service import TimeSeriesService, GetTimeSe
 from finazon_grpc_python.common.errors import FinazonGrpcRequestError
 from finazon_grpc_python.common.utils import convert_response_to_pandas
 from config import FINAZON_KEY
-from xyz.finazon_service.sql_service import insert_historical_record, insert_computed_metrics, get_last_processed_timestamp
 import pandas as pd
 
 # Initialize the global service
@@ -62,7 +61,7 @@ class FinazonService:
         else:
             raise ValueError("Invalid start_time format. Must be int (Unix), str (ISO 8601), or datetime.")
 
-    def fetch_time_series(self, ticker, interval='15m', dataset='us_stocks_essential', existing_df=None, start_time=1740787200):
+    def fetch_time_series(self, ticker, interval='30m', dataset='us_stocks_essential', existing_df=None, start_time=1740787200):
         """
         Fetch time series data for a ticker with pagination and rate limiting
         """
@@ -89,7 +88,7 @@ class FinazonService:
                 df = convert_response_to_pandas(response)
 
                 # Debug: Print the DataFrame
-                print(f"DataFrame for page {page}:\n {df.head(n=3)}\n")
+                #print(f"DataFrame for page {page}:\n {df.head(n=3)}\n")
 
                 if df.empty:
                     print(f"No more data to retrieve. Total pages retrieved: {page-1}")
@@ -100,7 +99,7 @@ class FinazonService:
 
                 # Increment the page number for the next request
                 page += 1
-                print(f'Turning to page {page}\n')
+                #print(f'Turning to page {page}\n')
 
                 # Respect the rate limit
                 time.sleep(self.request_interval)

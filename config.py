@@ -27,6 +27,7 @@ console_handler.setFormatter(formatter)
 # Add handlers to the logger
 logger.addHandler(console_handler)
 
+key = os.getenv('KEY')
 
 def log(msg):
     logger.debug(msg)

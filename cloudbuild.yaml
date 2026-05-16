@@ -1,0 +1,29 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/isadora-pipeline/$REPO_NAME:$SHORT_SHA',
+      '.'
+    ]
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'push',
+      'us-central1-docker.pkg.dev/$PROJECT_ID/isadora-pipeline/$REPO_NAME:$SHORT_SHA'
+    ]
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      [
+        'run', 'deploy', 'isadora-pipeline',
+        '--image', 'us-central1-docker.pkg.dev/$PROJECT_ID/isadora-pipeline/$REPO_NAME:$SHORT_SHA',
+        '--region', 'us-central1',
+        '--platform', 'managed',
+        '--allow-unauthenticated',
+        '--add-cloudsql-instances', 'trusty-spanner-446802-p2:us-central1:isadora-v2-db'
+      ]
+substitutions:
+  _REPO_NAME: isadora-pipeline
+timeout: 1200s
+
