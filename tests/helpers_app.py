@@ -22,6 +22,30 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
 
+# Request schemas are declared at module scope (not inside get_test_client)
+# because FastAPI introspects type annotations at route-registration time,
+# and locally-defined classes inside a closure occasionally confuse the
+# pydantic forward-ref resolver — leading to FastAPI treating the body as
+# a query parameter and emitting 422 "Field required" errors.
+class _ResearchRequest(BaseModel):
+    firm_id: int
+    account_id: int | None = None
+    symbol: str | None = None
+    brief: str | None = None
+    actor_user_id: int | None = None
+
+
+class _AuthorRequest(BaseModel):
+    firm_id: int
+    brief: str = Field(..., min_length=1)
+    actor_user_id: int | None = None
+    target_account_ids: list[int] = Field(default_factory=list)
+
+
+class _ValidateDslRequest(BaseModel):
+    dsl: dict[str, Any]
+
+
 def get_test_client() -> TestClient:
     """Build a minimal FastAPI app and return its TestClient.
 
@@ -35,22 +59,6 @@ def get_test_client() -> TestClient:
         if credentials.credentials != key:
             raise HTTPException(status_code=401, detail="Invalid authentication token")
         return credentials.credentials
-
-    class _ResearchRequest(BaseModel):
-        firm_id: int
-        account_id: int | None = None
-        symbol: str | None = None
-        brief: str | None = None
-        actor_user_id: int | None = None
-
-    class _AuthorRequest(BaseModel):
-        firm_id: int
-        brief: str = Field(..., min_length=1)
-        actor_user_id: int | None = None
-        target_account_ids: list[int] = Field(default_factory=list)
-
-    class _ValidateDslRequest(BaseModel):
-        dsl: dict[str, Any]
 
     mini_app = FastAPI()
 
