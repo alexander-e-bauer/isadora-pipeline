@@ -1,10 +1,12 @@
 """Pydantic models shared by all engine-side subagents."""
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+_BACKTEST_MIN_DAYS = 30
 
 
 class ResearchInput(BaseModel):
@@ -103,6 +105,21 @@ class BacktestInput(BaseModel):
     start_date: date
     end_date: date
     dsl: dict
+
+    @model_validator(mode="after")
+    def _validate_window(self) -> "BacktestInput":
+        # Refuse impossibly short windows.  CAGR is annualised via
+        # (1 + r)^(252/n) — a 3-day window with 1% return annualises to
+        # ~2,900%, which would be displayed to advisors as a real CAGR
+        # and flagged as a data error in compliance review.  30 calendar
+        # days is the smallest interval where CAGR is meaningful for
+        # monthly covered-call strategies.
+        if self.end_date < self.start_date + timedelta(days=_BACKTEST_MIN_DAYS):
+            raise ValueError(
+                f"end_date must be at least {_BACKTEST_MIN_DAYS} days after start_date "
+                "(annualised metrics are not meaningful on shorter windows)"
+            )
+        return self
 
 
 class BacktestArtifact(BaseModel):

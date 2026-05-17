@@ -446,6 +446,14 @@ def run_backtest(
                 if close_now:
                     pnl = open_short_call.opened_at_price - close_price
                     cash += pnl  # short premium net P&L
+                    # ITM expiration = assignment: shares are called away at
+                    # the strike.  Without this, NAV double-counts — the
+                    # share leg stays at spot while the option leg already
+                    # absorbed (spot - strike) into close_price.  Settle the
+                    # share leg now so EOD NAV correctly reflects the cap.
+                    if close_reason == "expiration_itm" and shares > 0:
+                        cash += shares * open_short_call.strike
+                        shares = 0
                     closed_trades.append(
                         TradeRecord(
                             contract_ticker=open_short_call.contract_ticker,
@@ -515,7 +523,13 @@ def run_backtest(
                         opened_at_price=fill_price,
                     )
                     cash += fill_price
-                    short_call_liability = _safe_float(best.close)
+                    # Liability = the price at which we sold the short — for
+                    # MTM on the open day this matches the cash inflow, so
+                    # day-1 NAV nets to zero option-impact regardless of
+                    # slippage.  Using best.close instead is correct only
+                    # when bid==ask==close (the v1 fill model), so this is
+                    # robust to a future fill model that uses real spread.
+                    short_call_liability = fill_price
 
         # --- 3d. End-of-day NAV.
         nav = cash + shares * spot - short_call_liability

@@ -65,8 +65,12 @@ def compute_fill(
     if max_slippage_pct is None:
         max_slippage_pct = DEFAULT_MAX_SLIPPAGE_PCT
 
-    bid = float(bid or 0.0)
-    ask = float(ask or 0.0)
+    # Clamp at zero — Polygon occasionally records negative bids on
+    # illiquid options.  Without the clamp, a -0.01 bid + 2.00 ask would
+    # produce mid=0.995 with half_spread=1.005, yielding a garbage fill
+    # price that bears no relation to the real ask.
+    bid = max(0.0, float(bid or 0.0))
+    ask = max(0.0, float(ask or 0.0))
 
     # Degenerate / gap-day quote: bail with a non-actionable zero.  The
     # backtest engine treats a zero quote as "no liquidity" and skips the

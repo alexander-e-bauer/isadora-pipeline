@@ -125,10 +125,14 @@ def avg_pnl(closed_pnls: Iterable[float], side: str) -> float:
     if side not in ("win", "loss"):
         raise ValueError("side must be 'win' or 'loss'")
     pnls = list(closed_pnls)
+    # Symmetric thresholds: a break-even trade (pnl == 0) is neither a
+    # winner nor a loser — it's flat.  Counting it as a loser pulls
+    # avg_loser_pnl toward zero on covered-call strategies that expire
+    # exactly at-the-money, misleading compliance review.
     if side == "win":
         relevant = [p for p in pnls if p > 0]
     else:
-        relevant = [p for p in pnls if p <= 0]
+        relevant = [p for p in pnls if p < 0]
     if not relevant:
         return 0.0
     return sum(relevant) / len(relevant)

@@ -100,6 +100,9 @@ def _seed_aapl_chain(session, start: date, end: date, *, spot_start: float = 150
     import math
 
     # Generate fixed monthly expiries for the whole window + a 90-day pad.
+    # Snap to the nearest preceding weekday so the engine's
+    # expiration-day path actually fires (the replay iterates trading
+    # days only, so a Sat/Sun expiry would land one or two days late).
     expiries: list[date] = []
     y, m = start.year, start.month
     pad_end = end + timedelta(days=120)
@@ -108,6 +111,8 @@ def _seed_aapl_chain(session, start: date, end: date, *, spot_start: float = 150
             exp = date(y, m, 21)
         except ValueError:
             exp = date(y, m, 28)
+        while exp.weekday() >= 5:
+            exp -= timedelta(days=1)
         if exp >= start:
             expiries.append(exp)
         if exp > pad_end:
