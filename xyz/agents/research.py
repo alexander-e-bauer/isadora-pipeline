@@ -228,13 +228,80 @@ class ResearchAgent:
 
         return ctx
 
-    def _gather_iv_context(self, symbol: str) -> dict:
-        """Pull ATM IV from a Polygon chain snapshot.
+    def _gather_iv_from_surface(self, symbol: str) -> dict | None:
+        """Query the engine DB's ``option_iv_surface`` for the most recent
+        IV samples for ``symbol``.
 
-        Returns a dict with iv_summary (float | None) and citation.
-        On any error (network, rate-limit, etc.) returns a stub noting
-        the unavailability — the agent must not hallucinate IV data.
+        Returns a context dict on hit, ``None`` on miss/error so the caller
+        can fall back to the Polygon snapshot path.  Errors (DB unavailable,
+        table missing in non-prod) are swallowed and logged — this is a best-
+        effort primary lookup, never a fatal one.
         """
+        try:
+            from xyz.finazon_service.sql_service import SessionLocal
+            from xyz.polygon_service.models import OptionIvSurface
+
+            session = SessionLocal()
+            try:
+                latest_date = session.query(OptionIvSurface.asof_date).filter(
+                    OptionIvSurface.underlying == symbol
+                ).order_by(OptionIvSurface.asof_date.desc()).first()
+                if latest_date is None:
+                    return None
+                asof_date = latest_date[0]
+
+                rows = (
+                    session.query(OptionIvSurface)
+                    .filter(
+                        OptionIvSurface.underlying == symbol,
+                        OptionIvSurface.asof_date == asof_date,
+                    )
+                    .all()
+                )
+                if not rows:
+                    return None
+
+                ivs = [float(r.implied_vol) for r in rows if r.implied_vol is not None]
+                avg_iv = sum(ivs) / len(ivs) if ivs else None
+
+                citation = Citation(
+                    kind="db_row",
+                    source=f"option_iv_surface:{symbol}:{asof_date.isoformat()}",
+                    excerpt=f"rows={len(rows)} avg_iv={avg_iv}",
+                )
+                return {
+                    "underlying_price": None,
+                    "atm_iv_estimate": avg_iv,
+                    "contract_count": len(rows),
+                    "asof": asof_date.isoformat(),
+                    "citation": citation.to_dict(),
+                    "note": (
+                        f"IV regime from option_iv_surface ({len(rows)} rows "
+                        f"as of {asof_date.isoformat()})."
+                    ),
+                }
+            finally:
+                session.close()
+        except Exception as exc:
+            logger.warning("option_iv_surface lookup unavailable for %s: %s", symbol, exc)
+            return None
+
+    def _gather_iv_context(self, symbol: str) -> dict:
+        """Build the IV regime context.
+
+        Primary source: the ``option_iv_surface`` table in the engine DB —
+        cheaper, quota-free, and the spec'd source-of-truth for IV history.
+        Fallback: a live Polygon chain snapshot when no surface rows exist
+        for the symbol yet (cold start / unscheduled ticker).
+        On any error (network, rate-limit, DB unreachable) returns a stub
+        noting the unavailability — the agent must not hallucinate IV data.
+        """
+        # Primary source: option_iv_surface (engine DB).
+        db_iv = self._gather_iv_from_surface(symbol)
+        if db_iv is not None:
+            return db_iv
+
+        # Fallback: live Polygon snapshot.
         try:
             snapshot = self._options.get_chain(symbol)
             underlying_price = snapshot.underlying_price or 0.0

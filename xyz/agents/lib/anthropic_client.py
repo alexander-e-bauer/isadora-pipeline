@@ -50,10 +50,9 @@ class AnthropicClient:
             ) from exc
 
         self._anthropic = _anthropic
-        self._client = _anthropic.Anthropic(
-            api_key=api_key or os.environ["ANTHROPIC_API_KEY"]
-        )
+        self._api_key = api_key
         self._model = model
+        self._client: Any = None  # constructed on first complete() call
 
     def complete(
         self,
@@ -85,6 +84,15 @@ class AnthropicClient:
         anthropic.types.Message
             The raw SDK Message object.
         """
+        if self._client is None:
+            # Lazy: defer env-var read + SDK client construction until the
+            # first actual API call.  Keeps construction free of side effects
+            # so app startup never fails on a missing ANTHROPIC_API_KEY when
+            # the route is never hit (e.g. unrelated requests, test imports).
+            self._client = self._anthropic.Anthropic(
+                api_key=self._api_key or os.environ["ANTHROPIC_API_KEY"]
+            )
+
         if isinstance(system, str):
             system_param: Any = system
         else:
