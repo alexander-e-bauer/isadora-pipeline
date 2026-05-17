@@ -2,7 +2,8 @@
 
 These model definitions are column-for-column identical to server's
 app/models/*.py so that engine can query tenant tables (firms, users,
-clients, accounts, strategies, deployments) and write to the events table.
+clients, accounts, strategies, deployments, positions, trades) and write
+to the events table.
 
 IMPORTANT: Engine MUST NOT call Base.metadata.create_all() for these
 models in production — server's Alembic migrations own all DDL for the
@@ -17,17 +18,20 @@ from __future__ import annotations
 
 import enum
 import hashlib
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -118,6 +122,37 @@ class SubscriptionStatus(str, enum.Enum):
     CANCELED = "CANCELED"
     INCOMPLETE = "INCOMPLETE"
     UNPAID = "UNPAID"
+
+
+class AssetClass(str, enum.Enum):
+    EQUITY = "EQUITY"
+    OPTION = "OPTION"
+
+
+class LotMethod(str, enum.Enum):
+    FIFO = "FIFO"
+    LIFO = "LIFO"
+    HIFO = "HIFO"
+    SPECIFIC = "SPECIFIC"
+
+
+class OptionType(str, enum.Enum):
+    CALL = "CALL"
+    PUT = "PUT"
+
+
+class TradeState(str, enum.Enum):
+    PROPOSED = "PROPOSED"
+    ADVISOR_APPROVED = "ADVISOR_APPROVED"
+    EXECUTED = "EXECUTED"
+    REJECTED = "REJECTED"
+    CANCELED = "CANCELED"
+
+
+class RiskClass(str, enum.Enum):
+    RISK_INCREASING = "RISK_INCREASING"
+    RISK_NEUTRAL = "RISK_NEUTRAL"
+    RISK_REDUCING = "RISK_REDUCING"
 
 
 # ---------------------------------------------------------------------------
@@ -510,4 +545,98 @@ class Event(Base):
     def __repr__(self) -> str:
         return (
             f"<Event id={self.id} kind={self.kind!r} firm_id={self.firm_id}>"
+        )
+
+
+class Position(Base):
+    """Read-only mirror of server's positions table."""
+
+    __tablename__ = "positions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id"), nullable=False, index=True
+    )
+    symbol: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    asset_class: Mapped[AssetClass] = mapped_column(Enum(AssetClass), nullable=False)
+    qty: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    cost_basis: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    lot_method: Mapped[LotMethod] = mapped_column(
+        Enum(LotMethod), nullable=False, server_default=LotMethod.FIFO.value
+    )
+    # Option-only fields — required when asset_class=OPTION, NULL when asset_class=EQUITY.
+    option_type: Mapped[OptionType | None] = mapped_column(Enum(OptionType), nullable=True)
+    strike: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
+    multiplier: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, server_default="100"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_positions_account_symbol", "account_id", "symbol"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<Position id={self.id} account_id={self.account_id} "
+            f"symbol={self.symbol!r} asset_class={self.asset_class} qty={self.qty}>"
+        )
+
+
+class Trade(Base):
+    """Read-only mirror of server's trades table."""
+
+    __tablename__ = "trades"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("accounts.id"), nullable=False, index=True
+    )
+    # deployment_id nullable — non-strategy trades exist (e.g. manual adjustments).
+    deployment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("deployments.id"), nullable=True, index=True
+    )
+    state: Mapped[TradeState] = mapped_column(
+        Enum(TradeState), nullable=False, server_default=TradeState.PROPOSED.value
+    )
+    action_family: Mapped[ActionFamily] = mapped_column(
+        Enum(ActionFamily), nullable=False
+    )
+    leaf_action: Mapped[str] = mapped_column(String(64), nullable=False)
+    risk_class: Mapped[RiskClass] = mapped_column(Enum(RiskClass), nullable=False)
+    order_ticket_json: Mapped[dict] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        nullable=False,
+        server_default="{}",
+    )
+    compliance_verdict_json: Mapped[dict | None] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+    advisor_approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    executed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    rejected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    canceled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<Trade id={self.id} account_id={self.account_id} "
+            f"state={self.state} action_family={self.action_family}>"
         )
