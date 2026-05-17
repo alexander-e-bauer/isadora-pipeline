@@ -1,0 +1,85 @@
+"""Manual position entry helper — bulk-insert positions for an account.
+
+Used for CSV import and ad-hoc seeding outside the HTTP layer.
+
+v1 exports one function: insert_positions_bulk.
+
+Caller is responsible for the surrounding transaction; this helper does
+NOT commit (matches emit_event semantics).
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from sqlalchemy.orm import Session
+
+from xyz.tenant.events import emit_event
+from xyz.tenant.models import Position
+
+
+def insert_positions_bulk(
+    db: Session,
+    account_id: int,
+    rows: list[dict],
+) -> list[int]:
+    """Bulk-insert position rows for an account.
+
+    Emits one ``position.added`` event per row (sharing a single chain
+    segment).  Returns the new position ids in insertion order.
+
+    Parameters
+    ----------
+    db:
+        Active SQLAlchemy Session.  The caller owns the transaction;
+        this helper does NOT commit.
+    account_id:
+        Target account id.  The caller is responsible for verifying
+        that this account belongs to the correct firm.
+    rows:
+        List of dicts matching Position column names.  Required keys:
+        ``symbol``, ``asset_class``, ``qty``, ``cost_basis``.
+        Optional keys: ``lot_method``, ``option_type``, ``strike``,
+        ``expiry``, ``multiplier``.
+
+    Returns
+    -------
+    list[int]
+        The new position ids in the same order as ``rows``.
+    """
+    ids: list[int] = []
+
+    for row in rows:
+        position = Position(
+            account_id=account_id,
+            symbol=row["symbol"],
+            asset_class=row["asset_class"],
+            qty=row["qty"],
+            cost_basis=row["cost_basis"],
+            lot_method=row.get("lot_method", "FIFO"),
+            option_type=row.get("option_type"),
+            strike=row.get("strike"),
+            expiry=row.get("expiry"),
+            multiplier=row.get("multiplier", 100),
+        )
+        db.add(position)
+        db.flush()  # get the auto-generated id
+
+        emit_event(
+            db=db,
+            kind="position.added",
+            firm_id=None,  # firm_id resolved by caller if needed
+            actor_user_id=None,
+            payload={
+                "position_id": position.id,
+                "account_id": account_id,
+                "symbol": position.symbol,
+                "asset_class": str(position.asset_class.value if hasattr(position.asset_class, "value") else position.asset_class),
+                "qty": str(position.qty),
+                "cost_basis": str(position.cost_basis),
+                "source": "manual_entry",
+            },
+        )
+
+        ids.append(position.id)
+
+    return ids
