@@ -12,7 +12,7 @@ when AnthropicClient is instantiated.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
@@ -20,10 +20,15 @@ DEFAULT_MODEL = "claude-sonnet-4-6"
 
 @dataclass
 class CachedSystemBlock:
-    """A block of system-prompt text that should be prompt-cached."""
+    """A block of system-prompt text that should be prompt-cached.
+
+    The Anthropic SDK only supports the ``ephemeral`` cache type today, so
+    every block is emitted with ``cache_control={"type": "ephemeral"}``.
+    A TTL field is intentionally omitted to avoid mis-signaling capability
+    the API does not yet expose.
+    """
 
     text: str
-    cache_ttl: str = "5m"  # "5m" (ephemeral) is the only supported TTL in SDK v0.x
 
 
 class AnthropicClient:
@@ -33,6 +38,12 @@ class AnthropicClient:
       - Single chokepoint for the API key + model selection (testable).
       - Centralised prompt-caching policy (cache_control on system blocks).
       - One place to swap to a different provider later without touching agents.
+
+    Thread-safety: the lazy ``self._client`` initialization is **not**
+    thread-safe.  Today this is fine because routes instantiate one
+    AnthropicClient per request.  If this is ever promoted to an
+    app-level singleton shared across the FastAPI threadpool, wrap the
+    init block in a ``threading.Lock``.
     """
 
     def __init__(

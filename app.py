@@ -1,3 +1,4 @@
+import json
 import logging
 import asyncio
 import threading
@@ -729,7 +730,21 @@ def research_endpoint(
         options_client=OptionsClient(),
         db_session_factory=get_tenant_session,
     )
-    artifact = agent.run(ResearchInput(**body.model_dump()))
+    try:
+        artifact = agent.run(ResearchInput(**body.model_dump()))
+    except json.JSONDecodeError as exc:
+        # Claude returned non-JSON (refusal, content-filter, truncation).
+        # Surface as 502 so the caller can distinguish upstream LLM failure
+        # from a bad request.
+        raise HTTPException(
+            status_code=502,
+            detail=f"LLM response was not valid JSON: {exc.msg}",
+        ) from exc
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"LLM response missing required field: {exc}",
+        ) from exc
     return artifact.model_dump(mode="json")
 
 

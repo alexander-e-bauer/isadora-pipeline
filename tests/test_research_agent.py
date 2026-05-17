@@ -44,7 +44,13 @@ def _load_fixture(name: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def _make_tenant_db():
-    """Create an in-memory SQLite DB with tenant + polygon tables."""
+    """Create an in-memory SQLite DB with tenant + polygon tables.
+
+    Both ``TenantBase`` and ``FinazonBase`` tables are created so that
+    tests exercising ``_gather_iv_from_surface`` (which reads from
+    ``option_iv_surface``) can seed real rows instead of relying on the
+    fallback-to-Polygon path.
+    """
     from xyz.tenant.models import Base as TenantBase
     from xyz.finazon_service.base import Base as FinazonBase
     import xyz.polygon_service.models  # noqa: register polygon tables
@@ -55,6 +61,7 @@ def _make_tenant_db():
         poolclass=StaticPool,
     )
     TenantBase.metadata.create_all(engine)
+    FinazonBase.metadata.create_all(engine)
     Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
     return engine, Session
 
@@ -347,3 +354,69 @@ def test_research_route_with_invalid_bearer_returns_401():
             headers={"Authorization": "Bearer wrong-token"},
         )
     assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Test 9 — _gather_iv_from_surface returns DB data and skips Polygon
+# ---------------------------------------------------------------------------
+
+def test_research_uses_option_iv_surface_when_available():
+    """When option_iv_surface has rows for the symbol, the agent must use
+    them as the primary IV source and NOT call the Polygon snapshot path."""
+    from xyz.agents.research import ResearchAgent
+    from xyz.agents.schemas import ResearchInput
+    from xyz.polygon_service.models import OptionIvSurface
+
+    _, Session = _make_tenant_db()
+
+    # Seed two surface rows for AAPL.  The agent should average their IVs
+    # and emit a db_row citation pointing at option_iv_surface.
+    seed_session = Session()
+    try:
+        seed_session.add_all([
+            OptionIvSurface(
+                underlying="AAPL",
+                asof_date=date(2026, 1, 16),
+                expiry=date(2026, 2, 20),
+                strike=180.0,
+                option_type="CALL",
+                implied_vol=0.28,
+            ),
+            OptionIvSurface(
+                underlying="AAPL",
+                asof_date=date(2026, 1, 16),
+                expiry=date(2026, 2, 20),
+                strike=185.0,
+                option_type="CALL",
+                implied_vol=0.32,
+            ),
+        ])
+        seed_session.commit()
+    finally:
+        seed_session.close()
+
+    # Patch the engine SessionLocal to point at our in-memory DB so the
+    # agent's _gather_iv_from_surface lookup hits the seeded rows.
+    options_client = _make_mock_options_client()
+    agent = ResearchAgent(
+        anthropic_client=_make_mock_anthropic_client(),
+        options_client=options_client,
+        db_session_factory=Session,
+    )
+
+    # _gather_iv_from_surface does `from xyz.finazon_service.sql_service
+    # import SessionLocal`.  That module pulls in psycopg2 at top of file,
+    # which isn't installed in the test venv — so we stub the module in
+    # sys.modules with one that exposes SessionLocal bound to our
+    # in-memory SQLite session factory.
+    import sys
+    from types import ModuleType
+    fake_mod = ModuleType("xyz.finazon_service.sql_service")
+    fake_mod.SessionLocal = Session  # type: ignore[attr-defined]
+    with patch.dict(sys.modules, {"xyz.finazon_service.sql_service": fake_mod}), \
+         patch.object(agent, "_gather_news_context", return_value=[]):
+        artifact = agent.run(ResearchInput(firm_id=1, symbol="AAPL"))
+
+    # IV regime came from the DB, not from Polygon.
+    options_client.get_chain.assert_not_called()
+    assert artifact.iv_regime is not None
