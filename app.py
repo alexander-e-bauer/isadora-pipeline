@@ -748,6 +748,88 @@ def research_endpoint(
     return artifact.model_dump(mode="json")
 
 
+# ---------------------------------------------------------------------------
+# AUTHOR + DSL-validation routes (Task 4.2)
+# ---------------------------------------------------------------------------
+
+class AuthorRequest(BaseModel):
+    firm_id: int
+    brief: str = Field(..., min_length=1)
+    actor_user_id: Optional[int] = None
+    target_account_ids: List[int] = Field(default_factory=list)
+
+
+@app.post("/agents/author")
+def author_endpoint(
+    body: AuthorRequest,
+    _: str = Depends(verify_token),
+):
+    """Invoke the AUTHOR subagent.
+
+    Body: ``{firm_id, brief, actor_user_id?, target_account_ids?}``.
+
+    Returns the AuthorArtifact (``{template, dsl, rationale, generated_at,
+    content_hash}``).  Persists a ``strategy.draft`` event side-effect.
+
+    Error mapping
+    -------------
+    - 422 on body validation (FastAPI default).
+    - 502 on upstream LLM failures: invalid JSON, missing required field,
+      or DSL that fails schema validation.  The 502 distinguishes "the
+      model misbehaved" from "the caller sent bad input".
+    """
+    from xyz.agents.author import AuthorAgent
+    from xyz.agents.schemas import AuthorInput
+    from xyz.agents.lib.anthropic_client import AnthropicClient
+    from xyz.tenant.db import get_tenant_session
+
+    agent = AuthorAgent(
+        anthropic_client=AnthropicClient(),
+        db_session_factory=get_tenant_session,
+    )
+    try:
+        artifact = agent.run(AuthorInput(**body.model_dump()))
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"LLM response was not valid JSON: {exc.msg}",
+        ) from exc
+    except (KeyError, ValueError) as exc:
+        # KeyError → Claude omitted a required top-level key.
+        # ValueError → DSL failed JSON-Schema validation (the agent guards
+        # the audit log from holding a malformed draft).
+        raise HTTPException(
+            status_code=502,
+            detail=f"AUTHOR produced an invalid response: {exc}",
+        ) from exc
+    return artifact.model_dump(mode="json")
+
+
+class ValidateDslRequest(BaseModel):
+    dsl: Dict[str, Any]
+
+
+@app.post("/agents/validate-dsl")
+def validate_dsl_endpoint(
+    body: ValidateDslRequest,
+    _: str = Depends(verify_token),
+):
+    """Validate a Strategy DSL against the v1 schema.
+
+    Returns ``{valid: bool, errors: [str, ...]}``.  Always 200 — even when
+    the DSL is invalid — so callers can branch on the body without trying
+    to distinguish "real failure" from "DSL has errors".  The server-side
+    PATCH hook in ``server-fastapi-wt/app/routes/strategies.py`` consumes
+    this endpoint to gate dsl_json updates.
+    """
+    # Lazy import so route registration doesn't pull jsonschema for
+    # unrelated endpoints.
+    from xyz.dsl.validate import validate_dsl
+
+    valid, errors = validate_dsl(body.dsl)
+    return {"valid": valid, "errors": errors}
+
+
 if __name__ == '__main__':
     logger.info("🚀 STARTING FINANCIAL DATA PIPELINE API")
 
