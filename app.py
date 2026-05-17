@@ -805,6 +805,73 @@ def author_endpoint(
     return artifact.model_dump(mode="json")
 
 
+class BacktestRequest(BaseModel):
+    strategy_id: int
+    strategy_version: int
+    firm_id: int
+    actor_user_id: Optional[int] = None
+    start_date: str  # ISO date YYYY-MM-DD
+    end_date: str
+    dsl: Dict[str, Any]
+
+
+@app.post("/agents/backtest")
+def backtest_endpoint(
+    body: BacktestRequest,
+    _: str = Depends(verify_token),
+):
+    """Invoke the BACKTEST subagent (Task 4.3).
+
+    Body: ``{strategy_id, strategy_version, firm_id, actor_user_id?,
+    start_date, end_date, dsl}``.
+
+    Returns the BacktestArtifact (``{strategy_id, strategy_version,
+    firm_id, start_date, end_date, metrics, n_trades, content_hash,
+    generated_at}``) and emits a ``backtest.result`` event.
+
+    The artifact is the immutable, hashed audit row required by §10 of
+    the north-star spec.  The engine does NOT write into the server's
+    ``backtest_results`` table — the caller is responsible for POSTing
+    the result to server's ``POST /backtests`` to persist it.
+
+    Error mapping
+    -------------
+    - 422 on body validation (FastAPI default).
+    - 400 if the DSL is unsupported (e.g. ``cash_secured_put`` in v1)
+      or if no chain data exists for the underlying in the window.
+    """
+    from datetime import date as _date
+    from xyz.agents.backtest import BacktestAgent
+    from xyz.agents.schemas import BacktestInput
+    from xyz.tenant.db import get_tenant_session
+
+    try:
+        start = _date.fromisoformat(body.start_date)
+        end = _date.fromisoformat(body.end_date)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"start_date / end_date must be ISO YYYY-MM-DD: {exc}",
+        ) from exc
+
+    agent = BacktestAgent(db_session_factory=get_tenant_session)
+    try:
+        artifact = agent.run(BacktestInput(
+            strategy_id=body.strategy_id,
+            strategy_version=body.strategy_version,
+            firm_id=body.firm_id,
+            actor_user_id=body.actor_user_id,
+            start_date=start,
+            end_date=end,
+            dsl=body.dsl,
+        ))
+    except ValueError as exc:
+        # DSL unsupported template, inverted dates, empty chain — all map
+        # to client-error 400.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return artifact.model_dump(mode="json")
+
+
 class ValidateDslRequest(BaseModel):
     dsl: Dict[str, Any]
 

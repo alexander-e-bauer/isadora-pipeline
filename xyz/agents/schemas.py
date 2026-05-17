@@ -1,7 +1,7 @@
 """Pydantic models shared by all engine-side subagents."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -77,3 +77,53 @@ class AuthorArtifact(BaseModel):
     rationale: str
     generated_at: datetime
     content_hash: str  # sha256 of dsl + rationale (excl. generated_at + hash)
+
+
+# ---------------------------------------------------------------------------
+# BACKTEST subagent  (Task 4.3)
+# ---------------------------------------------------------------------------
+
+class BacktestInput(BaseModel):
+    """Inputs to the BACKTEST subagent.
+
+    The caller supplies the DSL document directly (not a strategy_id
+    lookup) because the engine has no read-write contract with server's
+    strategies table — server is the source-of-truth for the DSL.  The
+    ``strategy_id`` + ``strategy_version`` fields are echoed back in the
+    output artifact for the server to bind the result to the right row.
+
+    ``actor_user_id`` is the advisor who kicked off the backtest; it is
+    used to stamp the ``backtest.result`` audit event.
+    """
+
+    strategy_id: int
+    strategy_version: int
+    firm_id: int
+    actor_user_id: int | None = None
+    start_date: date
+    end_date: date
+    dsl: dict
+
+
+class BacktestArtifact(BaseModel):
+    """Structured BACKTEST output — the immutable, hashed audit artifact.
+
+    The full NAV series is intentionally omitted from this payload (the
+    plan calls it "too big for a JSON column").  The ``metrics`` dict is
+    what the server persists in ``backtest_results.metrics_json`` and is
+    what callers compare against in the spec acceptance criteria.
+
+    ``content_hash`` excludes ``generated_at`` so re-running the same
+    backtest over the same data yields a byte-identical digest — the
+    determinism guarantee that 17a-4 audit relies on.
+    """
+
+    strategy_id: int
+    strategy_version: int
+    firm_id: int
+    start_date: date
+    end_date: date
+    metrics: dict
+    n_trades: int
+    content_hash: str  # sha256 of dsl + dates + metrics (excl. generated_at)
+    generated_at: datetime
