@@ -82,6 +82,12 @@ def compute_fill(
 
     mid = (bid + ask) / 2.0
     half_spread = (ask - bid) / 2.0
+    # Plan §484 reads ``slippage = min(half_spread, max_slippage_tolerance_pct)``
+    # but the spec §8 field name is ``max_slippage_tolerance_pct`` (units:
+    # fraction of the option price).  Reading the plan literally would mix
+    # dollars (half_spread) with a unitless pct on the right side.  We
+    # resolve the ambiguity by following the field name: tolerance is a
+    # fraction of mid, so the dollar cap is ``max_slippage_pct * mid``.
     slippage = min(half_spread, max_slippage_pct * mid)
 
     if side == "short":

@@ -145,9 +145,17 @@ def _quantize_floats(obj: Any) -> Any:
 
 
 def _content_hash(*, dsl: dict, start: date, end: date, metrics: dict) -> str:
-    """Stable sha256 over inputs+metrics.  Excludes any timestamps."""
+    """Stable sha256 over inputs+metrics.  Excludes any timestamps.
+
+    The DSL is quantized alongside ``metrics`` because callers may submit
+    float-valued DSL keys (``delta_short_target: 0.30`` etc.).  Without
+    quantization those values would be serialized by ``json.dumps`` using
+    Python's float repr, which can differ across platforms/builds for
+    edge cases.  Pre-rendering to 6-decimal strings keeps the hash
+    byte-stable for the same logical input.
+    """
     canonical_view = {
-        "dsl": dsl,
+        "dsl": _quantize_floats(dsl),
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
         "metrics": _quantize_floats(metrics),
