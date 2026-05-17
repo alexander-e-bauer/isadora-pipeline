@@ -144,3 +144,78 @@ class BacktestArtifact(BaseModel):
     n_trades: int
     content_hash: str  # sha256 of dsl + dates + metrics (excl. generated_at)
     generated_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# PROPOSE subagent  (Task 4.4)
+# ---------------------------------------------------------------------------
+
+class ProposeInput(BaseModel):
+    """Inputs to the PROPOSE subagent.
+
+    The caller identifies the deployment to evaluate.  ``firm_id`` is
+    required so the agent's audit event is correctly scoped — the
+    deployment look-up itself is performed against the tenant DB and is
+    cross-checked against ``firm_id`` before any further work runs.
+
+    ``actor_user_id`` is the advisor whose dashboard triggered the run
+    (or ``None`` for a system-tick proposal that's not in v1 — v1
+    triggers are advisor-initiated).
+    """
+
+    firm_id: int
+    deployment_id: int
+    actor_user_id: int | None = None
+
+
+class TradeTicket(BaseModel):
+    """A single proposed-trade ticket emitted by PROPOSE.
+
+    Each ticket carries everything COMPLIANCE (Task 4.5) needs to render
+    a verdict and everything the dashboard needs to surface for advisor
+    approval.  v1 only generates one ticket per PROPOSE call (one
+    deployment, one underlying, one entry), but the artifact is a list
+    so the v1.5 multi-leg/multi-symbol expansion does not break the
+    response shape.
+
+    Required spec fields:
+    - leaf_action          (spec §6 leaf taxonomy; v1 column only)
+    - action_family        (spec §6 family taxonomy)
+    - risk_class           (spec §6 risk taxonomy)
+    - account_id           (which account this proposes to trade in)
+    - deployment_id        (which strategy deployment this came from)
+    - order_ticket_json    (broker-facing detail — contract, side, limit, qty)
+    - autonomy_level_required / autonomy_level_account  (spec §7 matrix)
+    - reg_bi_rationale     (spec §10 advisor-reviewable stub)
+    - generated_at         (audit timestamp; NOT in content_hash)
+    """
+
+    account_id: int
+    deployment_id: int
+    leaf_action: Literal[
+        "OPEN_NEW",
+        "CLOSE_WIN",
+        "CLOSE_LOSS",
+        "ROLL_OUT_ONLY",
+    ]
+    action_family: Literal["OPEN", "CLOSE", "ROLL", "HEDGE", "PORTFOLIO", "EVENT", "STATE"]
+    risk_class: Literal["RISK_INCREASING", "RISK_NEUTRAL", "RISK_REDUCING"]
+    order_ticket_json: dict
+    autonomy_level_required: str  # L0..L5
+    autonomy_level_account: str | None  # L0..L5 or None when account has no row
+    reg_bi_rationale: str
+    generated_at: datetime
+
+
+class ProposeArtifact(BaseModel):
+    """Wrapper around the list of tickets PROPOSE produced (zero or more).
+
+    A trigger-miss returns ``tickets=[]`` with a populated ``reason``
+    string — NOT an error (acceptance criterion 1 from Task 4.4).
+    """
+
+    deployment_id: int
+    firm_id: int
+    tickets: list[TradeTicket]
+    reason: str | None = None  # populated when tickets=[] to explain the miss
+    generated_at: datetime
