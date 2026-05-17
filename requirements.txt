@@ -44,6 +44,8 @@ h11==0.16.0
 holidays==0.86
 httpcore==1.0.9
 httpx==0.28.1
+cachetools>=5
+respx>=0.21
 idna==3.11
 importlib_resources==6.5.2
 itsdangerous==2.2.0

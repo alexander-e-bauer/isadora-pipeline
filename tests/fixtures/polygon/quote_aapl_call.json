@@ -1,0 +1,21 @@
+{
+  "results": [
+    {
+      "ask_exchange": 12,
+      "ask_price": 2.60,
+      "ask_size": 50,
+      "bid_exchange": 12,
+      "bid_price": 2.50,
+      "bid_size": 45,
+      "conditions": [1],
+      "participant_timestamp": 1705535900123456789,
+      "sequence_number": 987654321,
+      "sip_timestamp": 1705535900234567890,
+      "tape": 3
+    }
+  ],
+  "status": "OK",
+  "request_id": "quote123test",
+  "count": 1,
+  "next_url": null
+}
