@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 import uvicorn
 from xyz.finazon_service.sql_service import init_db
 
-from config import PINECONE_API_KEY, PINECONE_HOST, logger, key
+from config import PINECONE_API_KEY, PINECONE_HOST, logger, key, ANTHROPIC_API_KEY
 from xyz.finazon_service.retrive_data import FinazonService
 from xyz.finazon_service.sql_service import (
     get_last_processed_timestamp,
@@ -689,6 +689,48 @@ async def get_ticker_performance(ticker_symbol: str, hours: int = 24):
     except Exception as e:
         logger.error(f"Error getting ticker performance for {ticker_symbol}: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving ticker performance: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Agent routes
+# ---------------------------------------------------------------------------
+
+class ResearchRequest(BaseModel):
+    firm_id: int
+    account_id: Optional[int] = None
+    symbol: Optional[str] = None
+    brief: Optional[str] = None
+    actor_user_id: Optional[int] = None
+
+
+@app.post("/agents/research")
+def research_endpoint(
+    body: ResearchRequest,
+    _: str = Depends(verify_token),
+):
+    """Invoke the RESEARCH subagent for a ticker, account, or free-form brief.
+
+    At least one of ``symbol`` or ``brief`` must be provided; otherwise a 422
+    is returned.  The agent gathers context from Polygon + the engine DB,
+    calls Claude, hashes the result, and persists a ``research.artifact``
+    event.  Returns the ResearchArtifact as JSON.
+    """
+    from xyz.agents.research import ResearchAgent
+    from xyz.agents.schemas import ResearchInput
+    from xyz.agents.lib.anthropic_client import AnthropicClient
+    from xyz.polygon_service.options_client import OptionsClient
+    from xyz.tenant.db import get_tenant_session
+
+    if not body.symbol and not body.brief:
+        raise HTTPException(status_code=422, detail="At least one of 'symbol' or 'brief' must be provided.")
+
+    agent = ResearchAgent(
+        anthropic_client=AnthropicClient(),
+        options_client=OptionsClient(),
+        db_session_factory=get_tenant_session,
+    )
+    artifact = agent.run(ResearchInput(**body.model_dump()))
+    return artifact.model_dump(mode="json")
 
 
 if __name__ == '__main__':

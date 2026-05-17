@@ -124,3 +124,6 @@ AV_KEY = os.getenv('AV_KEY')
 # to decrypt PII stored in tenant tables (email, name, external_account_id).
 # Must be a valid URL-safe base64-encoded 32-byte key (Fernet.generate_key()).
 ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY')
+
+# Anthropic Claude API key — used by engine-side AI subagents (RESEARCH, AUTHOR, etc.)
+ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
