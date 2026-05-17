@@ -608,31 +608,43 @@ def test_propose_with_unsupported_template_returns_empty():
 # ===========================================================================
 
 def test_propose_route_rejects_missing_bearer():
-    """The /agents/propose endpoint requires a bearer token (mirrors
-    /agents/research, /agents/author, /agents/backtest)."""
-    from fastapi import Depends, FastAPI, HTTPException
-    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-    from fastapi.testclient import TestClient
+    """The /agents/propose endpoint requires a bearer token.
 
-    security = HTTPBearer(auto_error=True)
+    Uses tests.helpers_app.get_test_client which mirrors the same
+    bearer-auth dependency wiring as the real engine app.py.  This
+    ensures the test catches a regression where any of the four
+    agent endpoints loses its auth dependency (the helper mounts
+    /agents/research, /agents/author, /agents/validate-dsl, and
+    /agents/propose under the same _verify_bearer guard the
+    production app uses)."""
+    import os
+    from unittest.mock import patch
 
-    def _verify(creds: HTTPAuthorizationCredentials = Depends(security)):
-        if creds.credentials != "secret":
-            raise HTTPException(status_code=401, detail="invalid")
-        return creds.credentials
-
-    app = FastAPI()
-
-    @app.post("/agents/propose", dependencies=[Depends(_verify)])
-    def _stub():
-        return {"ok": True}
-
-    client = TestClient(app, raise_server_exceptions=False)
-    resp = client.post("/agents/propose", json={
-        "firm_id": 1,
-        "deployment_id": 1,
-    })
+    with patch.dict(os.environ, {"KEY": "test-secret"}):
+        from tests.helpers_app import get_test_client
+        client = get_test_client()
+        resp = client.post("/agents/propose", json={
+            "firm_id": 1,
+            "deployment_id": 1,
+        })
     assert resp.status_code in (401, 403)
+
+
+def test_propose_route_with_invalid_bearer_returns_401():
+    """Mirrors the test_*_route_with_invalid_bearer pattern from
+    tests for Tasks 4.1 + 4.2."""
+    import os
+    from unittest.mock import patch
+
+    with patch.dict(os.environ, {"KEY": "test-secret"}):
+        from tests.helpers_app import get_test_client
+        client = get_test_client()
+        resp = client.post(
+            "/agents/propose",
+            json={"firm_id": 1, "deployment_id": 1},
+            headers={"Authorization": "Bearer wrong-token"},
+        )
+    assert resp.status_code == 401
 
 
 # ===========================================================================

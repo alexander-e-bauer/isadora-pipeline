@@ -904,6 +904,8 @@ def propose_endpoint(
     - 400 on hard data-shape errors raised as ValueError by the agent
       (these indicate a bug upstream — e.g. a deployment whose
       strategy_id is dangling — not a trigger miss).
+    - 502 on any other internal error (DB constraint, event-chain
+      failure, etc.) so a raw stack trace is not leaked to the caller.
     """
     from xyz.agents.propose import ProposeAgent
     from xyz.agents.schemas import ProposeInput
@@ -914,6 +916,14 @@ def propose_endpoint(
         artifact = agent.run(ProposeInput(**body.model_dump()))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("PROPOSE internal failure")
+        raise HTTPException(
+            status_code=502,
+            detail=f"propose_internal_error: {type(exc).__name__}",
+        ) from exc
     return artifact.model_dump(mode="json")
 
 

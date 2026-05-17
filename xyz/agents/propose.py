@@ -138,8 +138,20 @@ def _account_has_long_shares(db: Session, account_id: int, symbol: str, min_qty:
 def _has_open_short_call(db: Session, account_id: int, symbol: str, today: datetime) -> bool:
     """Return True if there's an open short call against ``symbol`` not yet expired.
 
-    "Open short call" = OPTION position with type=CALL, qty < 0, and
-    expiry >= today.date().
+    Scoping policy: this check is **account-wide for the symbol**, not
+    per-deployment.  Two deployments on the same underlying within the
+    same account will not stack short calls — the second PROPOSE call
+    will see the first deployment's short and block.  This is a
+    deliberate v1 simplification (avoid accidental concentrated short
+    exposure when an advisor activates a second strategy on the same
+    ticker).  v1.5 may scope to ``deployment_id`` once stacking policy
+    is formalised.
+
+    Expiry boundary: ``r.expiry > today_date`` — a contract whose
+    expiry is today is treated as expired (worthless after close), so
+    the account is free to open a new call on the same day.  This
+    avoids false "existing_open_short_call" blocks on monthly expiry
+    Fridays.
     """
     from xyz.tenant.models import AssetClass, OptionType, Position
 
@@ -157,7 +169,9 @@ def _has_open_short_call(db: Session, account_id: int, symbol: str, today: datet
             continue
         if r.qty >= 0:
             continue
-        if r.expiry is None or r.expiry < today_date:
+        # Same-day expiry: treat as already expired so a fresh open is
+        # not blocked on monthly expiration Fridays.
+        if r.expiry is None or r.expiry <= today_date:
             continue
         return True
     return False

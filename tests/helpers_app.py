@@ -9,6 +9,7 @@ Routes mounted:
   - POST /agents/research          (Task 4.1)
   - POST /agents/author            (Task 4.2)
   - POST /agents/validate-dsl      (Task 4.2)
+  - POST /agents/propose           (Task 4.4)
 """
 from __future__ import annotations
 
@@ -50,6 +51,12 @@ class _ValidateDslRequest(BaseModel):
     dsl: dict[str, Any]
 
 
+class _ProposeRequest(BaseModel):
+    firm_id: int
+    deployment_id: int
+    actor_user_id: int | None = None
+
+
 def get_test_client() -> TestClient:
     """Build a minimal FastAPI app and return its TestClient.
 
@@ -80,5 +87,9 @@ def get_test_client() -> TestClient:
         # still exercise valid/invalid response shapes.
         valid, errors = validate_dsl(body.dsl)
         return {"valid": valid, "errors": errors}
+
+    @mini_app.post("/agents/propose", dependencies=[Depends(_verify_bearer)])
+    def _propose_stub(body: _ProposeRequest):
+        return {"ok": True, "firm_id": body.firm_id, "deployment_id": body.deployment_id}
 
     return TestClient(mini_app, raise_server_exceptions=False)
