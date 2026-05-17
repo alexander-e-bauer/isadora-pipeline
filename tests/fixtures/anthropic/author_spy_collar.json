@@ -1,0 +1,54 @@
+{
+  "template": "collar",
+  "dsl": {
+    "kind": "declarative",
+    "name": "SPY Defensive Collar",
+    "version": 1,
+    "author_user_id": 12,
+    "firm_id": 1,
+    "template": "collar",
+    "selection": {
+      "universe": ["SPY"],
+      "underlying_must_be_long": true,
+      "min_shares_per_lot": 100
+    },
+    "trigger": {
+      "iv_rank_min": 0.20
+    },
+    "action": {
+      "short_call_delta": 0.30,
+      "long_put_delta": -0.20,
+      "dte_min": 30,
+      "dte_max": 45
+    },
+    "exit": {
+      "max_profit_pct_close": 0.50,
+      "close_when_dte_lt": 7
+    },
+    "risk_box": {
+      "position_sizing": {
+        "max_pct_account_notional": 0.30,
+        "max_pct_position_shares": 1.0,
+        "max_contracts_per_underlying": 10
+      },
+      "time_windows": {
+        "earnings_blackout_days": 0,
+        "fomc_blackout_days": 1
+      },
+      "tax_lot_awareness": {
+        "lot_method": "FIFO",
+        "wash_sale_lockout_days": 31
+      }
+    },
+    "autonomy_requirement": {
+      "OPEN": "L2",
+      "CLOSE": "L3",
+      "ROLL": "L3",
+      "HEDGE": "L2",
+      "PORTFOLIO": "L2",
+      "EVENT": "L4",
+      "STATE": "L4"
+    }
+  },
+  "rationale": "Defensive collar on SPY: a short OTM call funds (partially or fully) the long OTM protective put, capping downside while limiting upside. Reg-BI stub: confirm the client values downside protection over upside participation; the structure caps gains at the short-call strike."
+}

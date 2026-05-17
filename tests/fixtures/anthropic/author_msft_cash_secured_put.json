@@ -1,0 +1,56 @@
+{
+  "template": "cash_secured_put",
+  "dsl": {
+    "kind": "declarative",
+    "name": "MSFT Cash-Secured Put — Entry Ladder",
+    "version": 1,
+    "author_user_id": 11,
+    "firm_id": 1,
+    "template": "cash_secured_put",
+    "selection": {
+      "universe": ["MSFT"],
+      "min_cash_collateral_required": "100_x_strike"
+    },
+    "trigger": {
+      "iv_rank_min": 0.30,
+      "no_open_within_earnings_days": 7
+    },
+    "action": {
+      "leg": "short_put",
+      "delta_short_target": 0.30,
+      "dte_min": 30,
+      "dte_max": 45
+    },
+    "exit": {
+      "max_profit_pct_close": 0.50,
+      "close_when_dte_lt": 7
+    },
+    "risk_box": {
+      "position_sizing": {
+        "max_pct_account_notional": 0.20,
+        "max_pct_position_shares": null,
+        "max_contracts_per_underlying": 5
+      },
+      "time_windows": {
+        "earnings_blackout_days": 7
+      },
+      "regime_gates": {
+        "min_iv_rank": 0.30
+      },
+      "tax_lot_awareness": {
+        "lot_method": "FIFO",
+        "wash_sale_lockout_days": 31
+      }
+    },
+    "autonomy_requirement": {
+      "OPEN": "L2",
+      "CLOSE": "L3",
+      "ROLL": "L3",
+      "HEDGE": "L2",
+      "PORTFOLIO": "L2",
+      "EVENT": "L4",
+      "STATE": "L4"
+    }
+  },
+  "rationale": "Cash-secured put on MSFT is the requested entry-ladder structure. The 30-delta short put with 30-45 DTE balances premium yield with the probability of being put-to; the 50% profit close lets the strategy redeploy quickly when IV crushes. Reg-BI stub: verify suitability with the client's cash position and willingness to own MSFT at the short strike."
+}

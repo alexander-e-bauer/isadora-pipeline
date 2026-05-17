@@ -1,0 +1,124 @@
+{
+  "template": "covered_call",
+  "dsl": {
+    "kind": "declarative",
+    "name": "AAPL Covered Call — IRA Income",
+    "version": 1,
+    "author_user_id": 10,
+    "firm_id": 1,
+    "template": "covered_call",
+    "selection": {
+      "universe": ["AAPL"],
+      "underlying_must_be_long": true,
+      "min_shares_per_lot": 100
+    },
+    "trigger": {
+      "iv_rank_min": 0.30,
+      "no_open_within_earnings_days": 7
+    },
+    "action": {
+      "leg": "short_call",
+      "delta_short_target": 0.30,
+      "dte_min": 30,
+      "dte_max": 45,
+      "expiration_cycle": "monthly"
+    },
+    "adjustment": {
+      "roll_when_short_delta_above": 0.50,
+      "roll_to_dte_min": 30
+    },
+    "exit": {
+      "max_profit_pct_close": 0.50,
+      "close_when_dte_lt": 7
+    },
+    "risk_box": {
+      "position_sizing": {
+        "max_pct_account_notional": 0.25,
+        "max_pct_position_shares": 1.0,
+        "max_contracts_per_underlying": 10
+      },
+      "greek_limits": {
+        "max_short_delta_contribution": 0.40,
+        "max_short_gamma": null,
+        "max_vega_per_underlying": null,
+        "max_theta_decay_target": null,
+        "max_portfolio_beta_delta": null,
+        "max_portfolio_short_gamma": null
+      },
+      "loss_limits": {
+        "max_loss_per_trade_pct": null,
+        "max_drawdown_pct": null,
+        "daily_realized_loss_stop": null,
+        "max_unrealized_drawdown_pct": null,
+        "max_consecutive_losses": null
+      },
+      "concentration": {
+        "max_underlying_pct": null,
+        "max_sector_pct": null,
+        "max_correlation_cluster_pct": null,
+        "max_notional_per_expiration_date": null
+      },
+      "time_windows": {
+        "earnings_blackout_days": 7,
+        "fomc_blackout_days": null,
+        "fed_speakers_blackout": null,
+        "ex_div_blackout_days": null,
+        "no_open_after_time": null,
+        "no_open_before_dte": null,
+        "no_trade_first_x_minutes": null,
+        "friday_afternoon_lockdown": null
+      },
+      "regime_gates": {
+        "min_iv_rank": 0.30,
+        "max_iv_rank": null,
+        "vix_ceiling": null,
+        "term_structure_state": null,
+        "min_iv_rv_spread": null,
+        "underlying_technical_extreme": null
+      },
+      "liquidity_gates": {
+        "min_open_interest": 500,
+        "min_avg_daily_volume": 100,
+        "max_bid_ask_spread_pct": 0.05
+      },
+      "account_gates": {
+        "min_buying_power_buffer_pct": 0.10,
+        "margin_utilization_ceiling": null
+      },
+      "execution_microstructure": {
+        "max_order_retries": 3,
+        "max_slippage_tolerance_pct": 0.05,
+        "max_order_size_vs_adv_pct": null
+      },
+      "assignment_pin_risk": {
+        "pin_risk_window_dte": 2,
+        "max_itm_prob_at_dte": 0.20,
+        "dividend_yield_early_exercise_threat": null
+      },
+      "tax_lot_awareness": {
+        "lot_method": "FIFO",
+        "wash_sale_lockout_days": 31
+      },
+      "client_overrides": {
+        "do_not_call_above_strike": null,
+        "do_not_sell_below_price": null,
+        "restricted_tickers": []
+      },
+      "cross_strategy_aggregation": {
+        "combined_delta_cap": null,
+        "combined_vega_cap": null,
+        "combined_short_gamma_cap": null
+      }
+    },
+    "autonomy_requirement": {
+      "OPEN": "L2",
+      "CLOSE": "L3",
+      "ROLL": "L3",
+      "HEDGE": "L2",
+      "PORTFOLIO": "L2",
+      "EVENT": "L4",
+      "STATE": "L4"
+    }
+  },
+  "rationale": "The advisor requested income generation on AAPL with low assignment risk in an IRA-eligible account. A covered call ladder against an existing long AAPL position is the most direct match: it generates premium income, the underlying long share position fully covers the short call obligation (no naked exposure permitted in IRAs), and the 30-delta short strike target keeps the probability of assignment below ~30% while maintaining attractive yield. We applied a 7-day earnings blackout window because AAPL has been a high-realized-vol earnings trade historically, and a 50% profit-take rule to compound gains. This is a Reg-BI rationale stub — the advisor must review suitability against the specific client's investment objectives, time horizon, liquidity needs, and risk tolerance before approving the deployment.\n\nAssignment risk is further mitigated via the 0.50-delta roll trigger and the pin-risk window of 2 DTE: if the short call drifts deep ITM near expiry, the strategy automatically proposes a roll-up-and-out before assignment can occur. The 25% account-notional cap on covered positions prevents concentration risk if AAPL appreciates rapidly."
+}
