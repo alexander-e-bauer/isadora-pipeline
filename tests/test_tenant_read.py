@@ -141,6 +141,8 @@ def _load_server_models() -> None:
         ("processed_stripe_event", "app.models.processed_stripe_event"),
         ("strategy", "app.models.strategy"),
         ("deployment", "app.models.deployment"),
+        ("position", "app.models.position"),
+        ("trade", "app.models.trade"),
     ]
     for file_name, module_name in model_files:
         if module_name not in sys.modules:
