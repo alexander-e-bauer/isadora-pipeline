@@ -192,20 +192,23 @@ def test_engine_position_schema_matches_server():
 # ---------------------------------------------------------------------------
 
 def test_insert_positions_bulk_creates_rows_and_emits_events(db_session):
-    """Call insert_positions_bulk with 3 rows; assert 3 positions + 3 position.added events."""
+    """Call insert_positions_bulk with 3 rows; assert 3 positions + 3 firm-scoped
+    position.added events (firm_id resolved via the Account → Client chain)."""
     from xyz.positions.manual_entry import insert_positions_bulk
+    from xyz.tenant.models import Account, Client, Firm
 
-    # We need an account row first (FK constraint).
-    # The tenant SQLite DB has all tables; we need a minimal firm → client → account chain.
-    from xyz.tenant.models import Firm, Client, Account
-
+    # Build the full Firm → Client → Account chain so _resolve_firm_id can
+    # find the firm and emit firm-scoped events.
     firm = Firm(name="Test Firm")
     db_session.add(firm)
     db_session.flush()
 
-    # SQLite doesn't enforce FK constraints by default, so we can insert directly.
+    client = Client(firm_id=firm.id, name="Test Client")
+    db_session.add(client)
+    db_session.flush()
+
     account = Account(
-        client_id=1,  # will be FK-satisfied by the client below
+        client_id=client.id,
         nickname="Test Account",
         account_type="TAXABLE",
         base_currency="USD",
@@ -236,11 +239,16 @@ def test_insert_positions_bulk_creates_rows_and_emits_events(db_session):
     symbols = {p.symbol for p in positions}
     assert symbols == {"AAPL", "MSFT", "GOOG"}
 
-    # 3 position.added events emitted
+    # 3 position.added events emitted, ALL firm-scoped so /events queries
+    # filtered by firm_id return them.
     events = db_session.scalars(
         select(Event).where(Event.kind == "position.added")
     ).all()
     assert len(events) == 3
+    assert all(ev.firm_id == firm.id for ev in events), (
+        "All emitted events must carry firm_id (resolved from the account chain), "
+        "not None — otherwise firm-scoped /events queries miss them."
+    )
 
     event_symbols = {e.payload["symbol"] for e in events}
     assert event_symbols == {"AAPL", "MSFT", "GOOG"}
