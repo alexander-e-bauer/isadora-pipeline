@@ -64,7 +64,7 @@ def _make_sqlite_session():
 # ---------------------------------------------------------------------------
 
 @pytest.fixture()
-def db_session():
+def polygon_db_session():
     """Fresh in-memory SQLite session per test — ensures test isolation."""
     eng, Session = _make_sqlite_session()
     session = Session()
@@ -252,7 +252,7 @@ def test_options_client_get_historical_aggs(client):
 # ---------------------------------------------------------------------------
 
 @respx.mock
-def test_fetch_and_persist_historical_eod_inserts_rows(db_session, rate_limiter_unlimited, chain_cache_fresh):
+def test_fetch_and_persist_historical_eod_inserts_rows(polygon_db_session, rate_limiter_unlimited, chain_cache_fresh):
     """fetch_and_persist_historical_eod inserts 5 rows for a single contract."""
     from xyz.polygon_service.historical import fetch_and_persist_historical_eod
     from xyz.polygon_service.options_client import OptionsClient, OptionContract
@@ -281,16 +281,16 @@ def test_fetch_and_persist_historical_eod_inserts_rows(db_session, rate_limiter_
 
     inserted = fetch_and_persist_historical_eod(
         client=c,
-        db=db_session,
+        db=polygon_db_session,
         underlying="AAPL",
         contracts=contracts,
         start_date=date(2024, 1, 8),
         end_date=date(2024, 1, 12),
     )
-    db_session.commit()
+    polygon_db_session.commit()
 
     assert inserted == 5
-    rows = db_session.query(OptionHistoricalEod).filter_by(contract_ticker=contract_ticker).all()
+    rows = polygon_db_session.query(OptionHistoricalEod).filter_by(contract_ticker=contract_ticker).all()
     assert len(rows) == 5
     assert rows[0].underlying == "AAPL"
     assert rows[0].option_type == "CALL"
@@ -302,7 +302,7 @@ def test_fetch_and_persist_historical_eod_inserts_rows(db_session, rate_limiter_
 # ---------------------------------------------------------------------------
 
 @respx.mock
-def test_fetch_and_persist_historical_eod_skips_duplicates(db_session, rate_limiter_unlimited, chain_cache_fresh):
+def test_fetch_and_persist_historical_eod_skips_duplicates(polygon_db_session, rate_limiter_unlimited, chain_cache_fresh):
     """Re-running fetch_and_persist_historical_eod does not insert duplicate rows."""
     from xyz.polygon_service.historical import fetch_and_persist_historical_eod
     from xyz.polygon_service.options_client import OptionsClient, OptionContract
@@ -331,22 +331,22 @@ def test_fetch_and_persist_historical_eod_skips_duplicates(db_session, rate_limi
     ]
 
     kwargs = dict(
-        client=c, db=db_session, underlying="AAPL",
+        client=c, db=polygon_db_session, underlying="AAPL",
         contracts=contracts, start_date=date(2024, 1, 8), end_date=date(2024, 1, 12)
     )
 
     # First run inserts 5 rows.
     inserted_first = fetch_and_persist_historical_eod(**kwargs)
-    db_session.commit()
+    polygon_db_session.commit()
 
     # Second run should insert 0 (all duplicates).
     inserted_second = fetch_and_persist_historical_eod(**kwargs)
-    db_session.commit()
+    polygon_db_session.commit()
 
     assert inserted_first == 5
     assert inserted_second == 0
 
-    total = db_session.query(OptionHistoricalEod).filter_by(contract_ticker=contract_ticker).count()
+    total = polygon_db_session.query(OptionHistoricalEod).filter_by(contract_ticker=contract_ticker).count()
     assert total == 5
 
 

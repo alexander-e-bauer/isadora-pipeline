@@ -85,6 +85,7 @@ class OptionChains(Base):
     gamma = Column(Numeric(10, 6), nullable=True)
     theta = Column(Numeric(10, 6), nullable=True)
     vega = Column(Numeric(10, 6), nullable=True)
+    rho = Column(Numeric(10, 6), nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
@@ -139,6 +140,7 @@ class OptionQuotes(Base):
     gamma = Column(Numeric(10, 6), nullable=True)
     theta = Column(Numeric(10, 6), nullable=True)
     vega = Column(Numeric(10, 6), nullable=True)
+    rho = Column(Numeric(10, 6), nullable=True)
 
     __table_args__ = (
         Index("ix_option_quotes_contract_fetched_at", "contract_ticker", "fetched_at"),

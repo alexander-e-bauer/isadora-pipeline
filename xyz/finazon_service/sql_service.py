@@ -28,10 +28,23 @@ from xyz.finazon_service.base import Base  # noqa: F401 — re-exported for call
 # module load time (polygon models import Base from this module).
 # ---------------------------------------------------------------------------
 def _register_polygon_models():
+    """Import polygon options models so their tables register on Base.
+
+    Wrapped in a function (rather than a top-level import) to break a
+    potential circular-import at module load time. ImportError on the
+    polygon_service package itself is logged loudly — otherwise init_db's
+    create_all would silently skip the option_* tables in production
+    with no observable signal. Other exceptions propagate (we want to
+    know about a SyntaxError or bad Column type, not swallow it).
+    """
     try:
         import xyz.polygon_service.models  # noqa: F401
-    except Exception:
-        pass  # graceful degradation if polygon_service is absent
+    except ImportError as exc:
+        logger.error(
+            "Failed to register polygon_service models on Base — "
+            "option_* tables will NOT be created by init_db(). "
+            "ImportError: %s", exc,
+        )
 
 _register_polygon_models()
 
