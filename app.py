@@ -872,6 +872,51 @@ def backtest_endpoint(
     return artifact.model_dump(mode="json")
 
 
+class ProposeRequest(BaseModel):
+    firm_id: int
+    deployment_id: int
+    actor_user_id: Optional[int] = None
+
+
+@app.post("/agents/propose")
+def propose_endpoint(
+    body: ProposeRequest,
+    _: str = Depends(verify_token),
+):
+    """Invoke the PROPOSE subagent (Task 4.4).
+
+    Body: ``{firm_id, deployment_id, actor_user_id?}``.
+
+    Returns the ProposeArtifact (``{deployment_id, firm_id, tickets,
+    reason, generated_at}``).  A trigger-miss returns ``tickets=[]``
+    with a ``reason`` string — NOT an error — per acceptance criterion
+    1.  Each emitted ticket also lands in the engine's audit chain as
+    a ``ticket.proposed`` event.
+
+    The engine does NOT write into the server's ``trades`` table — the
+    caller (dashboard or orchestrator) POSTs each returned ticket to
+    server's ``POST /trades`` to persist it.  This mirrors the BACKTEST
+    transport contract from Task 4.3.
+
+    Error mapping
+    -------------
+    - 422 on body validation (FastAPI default).
+    - 400 on hard data-shape errors raised as ValueError by the agent
+      (these indicate a bug upstream — e.g. a deployment whose
+      strategy_id is dangling — not a trigger miss).
+    """
+    from xyz.agents.propose import ProposeAgent
+    from xyz.agents.schemas import ProposeInput
+    from xyz.tenant.db import get_tenant_session
+
+    agent = ProposeAgent(db_session_factory=get_tenant_session)
+    try:
+        artifact = agent.run(ProposeInput(**body.model_dump()))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return artifact.model_dump(mode="json")
+
+
 class ValidateDslRequest(BaseModel):
     dsl: Dict[str, Any]
 
