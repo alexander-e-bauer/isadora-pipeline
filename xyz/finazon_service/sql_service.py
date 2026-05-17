@@ -6,7 +6,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy import create_engine, Column, Integer, Float, String, ForeignKey, BigInteger, Date, DateTime, Text, \
     Table, text, Boolean
 from sqlalchemy.dialects.postgresql import ARRAY
-from sqlalchemy.orm import relationship, sessionmaker, declarative_base, Session
+from sqlalchemy.orm import relationship, sessionmaker, Session
 from contextlib import contextmanager
 from config import DATABASE, logger
 import pandas as pd
@@ -17,7 +17,23 @@ import logging
 import json
 from xyz.finazon_service.api_service import get_new_ticker_gen_data
 
-Base = declarative_base()
+# Base lives in xyz.finazon_service.base so it can be imported independently
+# of psycopg2 / the live engine creation in this file.
+from xyz.finazon_service.base import Base  # noqa: F401 — re-exported for callers
+
+# ---------------------------------------------------------------------------
+# Polygon options models — side-effect import so their ORM classes register
+# themselves on this Base before init_db() calls create_all.
+# Import is deferred via a lazy wrapper to avoid circular-import issues at
+# module load time (polygon models import Base from this module).
+# ---------------------------------------------------------------------------
+def _register_polygon_models():
+    try:
+        import xyz.polygon_service.models  # noqa: F401
+    except Exception:
+        pass  # graceful degradation if polygon_service is absent
+
+_register_polygon_models()
 
 # Create SQLAlchemy engine with connection pooling
 DATABASE_URI = f"postgresql+psycopg2://{DATABASE.DB_USER}:{DATABASE.DB_PASSWORD}@{DATABASE.DB_HOST}/{DATABASE.DB_NAME}"
