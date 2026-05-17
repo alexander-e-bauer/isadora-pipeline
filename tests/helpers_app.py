@@ -21,6 +21,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
+# Imported at module scope so a missing jsonschema dep surfaces at test
+# collection time, not deep inside an HTTP handler.
+from xyz.dsl.validate import validate_dsl
+
 
 # Request schemas are declared at module scope (not inside get_test_client)
 # because FastAPI introspects type annotations at route-registration time,
@@ -74,7 +78,6 @@ def get_test_client() -> TestClient:
     def _validate_stub(body: _ValidateDslRequest):
         # Echo the validator's real result so route-only tests (no DB) can
         # still exercise valid/invalid response shapes.
-        from xyz.dsl.validate import validate_dsl
         valid, errors = validate_dsl(body.dsl)
         return {"valid": valid, "errors": errors}
 
