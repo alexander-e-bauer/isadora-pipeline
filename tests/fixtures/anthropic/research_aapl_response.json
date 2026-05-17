@@ -1,0 +1,52 @@
+{
+  "symbol": "AAPL",
+  "summary": "Apple Inc. (AAPL) is trading near $185.00 with an estimated ATM implied volatility of 28.5% based on the current options chain snapshot. The near-term options market reflects moderate uncertainty ahead of the next catalyst. No earnings date is available in the v1 data layer.",
+  "iv_regime": {
+    "title": "Implied Volatility Regime",
+    "body": "The ATM implied volatility estimate derived from the Polygon options chain snapshot is approximately 28.5%. The options chain contains 3 contracts across the January 2025 expiry cycle, with the 185-strike call showing IV of 28.5% and delta of 0.52. Historical IV rank vs. a 252-day range is unavailable in v1.",
+    "citations": [
+      {
+        "kind": "polygon",
+        "source": "snapshot:AAPL:2025-01-17T20:00:00",
+        "excerpt": "underlying_price=185.0, atm_iv_sample_count=1"
+      }
+    ]
+  },
+  "earnings_calendar": {
+    "title": "Earnings Calendar",
+    "body": "Earnings calendar data is unavailable in v1. The advisor should verify the next earnings date via an external source before structuring time-sensitive positions.",
+    "citations": []
+  },
+  "news_headlines": {
+    "title": "Recent News Headlines",
+    "body": "5 recent documents linked to AAPL were retrieved from the engine database. Headlines include: 'Apple reports record Q1 revenue', 'iPhone 17 supply chain update', 'AAPL options activity surges ahead of earnings', 'Apple Vision Pro adoption report', 'Buffett trims AAPL stake in Q4'.",
+    "citations": [
+      {
+        "kind": "db_row",
+        "source": "documents:1",
+        "excerpt": "Apple reports record Q1 revenue"
+      },
+      {
+        "kind": "db_row",
+        "source": "documents:2",
+        "excerpt": "iPhone 17 supply chain update"
+      },
+      {
+        "kind": "db_row",
+        "source": "documents:3",
+        "excerpt": "AAPL options activity surges ahead of earnings"
+      },
+      {
+        "kind": "db_row",
+        "source": "documents:4",
+        "excerpt": "Apple Vision Pro adoption report"
+      },
+      {
+        "kind": "db_row",
+        "source": "documents:5",
+        "excerpt": "Buffett trims AAPL stake in Q4"
+      }
+    ]
+  },
+  "peer_comparison": null
+}
