@@ -535,7 +535,20 @@ async def initialize_database_async(tickers: List[str], interval: str = '30m',
 
 
 async def run_pipeline_async(request_data: Dict[str, Any]):
-    """Run the pipeline asynchronously"""
+    """Run the pipeline asynchronously.
+
+    The originating request's correlation id is threaded in via
+    ``request_data['_propagated_request_id']`` (set by run_pipeline()
+    before scheduling the task).  We re-install it into the ContextVar
+    here so every log line + emit_event call inside the background
+    pipeline carries the same ``request_id`` as the originating
+    ``/run-pipeline`` request (Task 5.2 AC #1).
+    """
+    propagated = request_data.get('_propagated_request_id')
+    rid_token = None
+    if propagated:
+        from xyz.observability.request_id import request_id_var
+        rid_token = request_id_var.set(propagated)
     try:
         logger.info(f"🚀 Starting async pipeline execution with data: {request_data}")
         start_time = time.time()
@@ -596,6 +609,12 @@ async def run_pipeline_async(request_data: Dict[str, Any]):
             "error": str(e),
             "duration": time.time() - start_time if 'start_time' in locals() else 0
         }
+    finally:
+        # Release the propagated correlation id so the next background
+        # task sees a clean ContextVar (the request scope already reset).
+        if rid_token is not None:
+            from xyz.observability.request_id import request_id_var
+            request_id_var.reset(rid_token)
 
 
 # API Routes
@@ -635,11 +654,21 @@ async def run_pipeline(
     5. Create forecasts
     """
     try:
+        # Capture the middleware-set correlation id BEFORE the request
+        # scope tears down (background tasks run outside the request
+        # ContextVar lifetime).  Thread it into run_pipeline_async via
+        # ``_propagated_request_id`` so every log line + emit_event call
+        # inside the background pipeline carries the same id — without
+        # this, AC #1 fails for the pipeline's primary workload.
+        from xyz.observability.request_id import get_request_id
+        propagated_rid = get_request_id()
+
         # Convert request to dict and add metadata
         request_data = request.dict()
         request_data.update({
             'timestamp': datetime.utcnow().isoformat(),
-            'request_id': f"req_{int(time.time())}"
+            'request_id': propagated_rid or f"req_{int(time.time())}",
+            '_propagated_request_id': propagated_rid,
         })
 
         # Start pipeline in background

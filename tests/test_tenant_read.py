@@ -170,12 +170,15 @@ def _server_compute_hash_impl(
     import hashlib
     import json
 
+    # Strip underscore-prefixed observability keys before hashing — must
+    # match server's _strip_observability_keys.
+    stripped_payload = {k: v for k, v in payload.items() if not k.startswith("_")}
     canonical = json.dumps(
         {
             "kind": kind,
             "firm_id": firm_id,
             "actor_user_id": actor_user_id,
-            "payload": payload,
+            "payload": stripped_payload,
             "prev_event_hash": prev_event_hash,
             "created_at": created_at_iso,
         },
@@ -383,6 +386,33 @@ def test_engine_event_hash_matches_server_implementation():
         "Inline copy of _compute_event_hash has drifted from the live "
         "server function. Update _server_compute_hash_impl in this test "
         "to keep the fallback path accurate."
+    )
+
+    # Observability-key parity: a payload that differs ONLY in its
+    # underscore-prefixed keys (``_request_id`` and friends) must produce
+    # the same hash on both sides.  Without ``_strip_observability_keys``
+    # this assertion catches a divergence where one app folds ``_request_id``
+    # into the hash and the other strips it.
+    kwargs_with_obs = dict(kwargs)
+    kwargs_with_obs["payload"] = {
+        **kwargs["payload"],
+        "_request_id": "0123456789abcdef0123456789abcdef",
+        "_trace_id": "ffeeddccbbaa99887766554433221100",
+    }
+    engine_obs_hash = engine_compute_hash(**kwargs_with_obs)
+    server_obs_hash = live_server_hash(**kwargs_with_obs)
+    assert engine_obs_hash == server_obs_hash, (
+        "Observability-key strip diverged between engine + server.  Both "
+        "must drop underscore-prefixed keys from the hash input or the "
+        "audit chain fragments across processes."
+    )
+    assert engine_obs_hash == engine_hash, (
+        "Engine hash changed when only observability keys were added — "
+        "_strip_observability_keys is not being applied in the engine."
+    )
+    assert server_obs_hash == server_hash, (
+        "Server hash changed when only observability keys were added — "
+        "_strip_observability_keys is not being applied in the server."
     )
 
 

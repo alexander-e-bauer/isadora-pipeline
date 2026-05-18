@@ -42,6 +42,15 @@ logger = logging.getLogger(__name__)
 # Internal helpers  (identical to server/app/events/emit.py)
 # ---------------------------------------------------------------------------
 
+def _strip_observability_keys(payload: dict) -> dict:
+    """Drop underscore-prefixed observability keys (``_request_id``, etc.)
+    before hashing — see server's ``app/events/emit.py`` for the
+    rationale.  Both apps MUST share this strip-rule or the cross-app
+    hash chain diverges.
+    """
+    return {k: v for k, v in payload.items() if not k.startswith("_")}
+
+
 def _compute_event_hash(
     *,
     kind: str,
@@ -55,14 +64,15 @@ def _compute_event_hash(
 
     The canonical form is compact, sorted-key JSON.  Must be identical to
     server's implementation — same field set, same separators, same key
-    ordering, same JSON-native type enforcement.
+    ordering, same JSON-native type enforcement.  Observability keys are
+    stripped from the payload before hashing (see _strip_observability_keys).
     """
     canonical = json.dumps(
         {
             "kind": kind,
             "firm_id": firm_id,
             "actor_user_id": actor_user_id,
-            "payload": payload,
+            "payload": _strip_observability_keys(payload),
             "prev_event_hash": prev_event_hash,
             "created_at": created_at_iso,
         },
