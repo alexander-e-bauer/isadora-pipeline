@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import enum
 import hashlib
-from datetime import date, datetime
+from datetime import date, datetime  # noqa: F401 — date used by Position.expiry / BacktestResult.start_date
 from decimal import Decimal
 from typing import Any
 
@@ -379,7 +379,17 @@ class Strategy(Base):
         server_default=StrategyState.DRAFT.value,
     )
     dsl_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    backtest_result_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # FK + index mirror server's app.models.strategy.  Engine does NOT define
+    # a BacktestResult mirror (server owns backtest_results); the FK is still
+    # valid in SQLAlchemy metadata because the referenced table need only be
+    # resolvable at DDL/query time, which engine never performs against this
+    # column.  Keeping the FK declaration here is what schema-parity demands.
+    backtest_result_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("backtest_results.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
@@ -586,6 +596,51 @@ class Position(Base):
         return (
             f"<Position id={self.id} account_id={self.account_id} "
             f"symbol={self.symbol!r} asset_class={self.asset_class} qty={self.qty}>"
+        )
+
+
+class BacktestResult(Base):
+    """Read-only mirror of server's backtest_results table.
+
+    Engine NEVER reads or writes this table — server owns backtest result
+    artifacts.  The mirror exists only so that Strategy.backtest_result_id's
+    ForeignKey resolves against in-metadata tables (otherwise SQLite
+    create_all in tests fails with NoReferencedTableError).
+    """
+
+    __tablename__ = "backtest_results"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    strategy_id: Mapped[int] = mapped_column(
+        ForeignKey("strategies.id"), nullable=False, index=True
+    )
+    strategy_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    metrics_json: Mapped[dict] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        nullable=False,
+        server_default="{}",
+    )
+    content_hash: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_backtest_results_strategy_id_version",
+            "strategy_id",
+            "strategy_version",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<BacktestResult id={self.id} strategy_id={self.strategy_id} "
+            f"v{self.strategy_version} hash={self.content_hash[:8]}...>"
         )
 
 

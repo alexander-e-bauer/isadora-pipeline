@@ -35,6 +35,7 @@ from xyz.tenant.models import (  # noqa: F401
     Trade,
     TradeState,
     RiskClass,
+    BacktestResult,
 )
 
 __all__ = [
@@ -67,4 +68,5 @@ __all__ = [
     "Trade",
     "TradeState",
     "RiskClass",
+    "BacktestResult",
 ]
