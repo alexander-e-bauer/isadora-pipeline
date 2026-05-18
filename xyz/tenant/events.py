@@ -32,6 +32,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from xyz.observability.request_id import get_request_id
 from xyz.tenant.models import Event
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,17 @@ def emit_event(
     str
         The new event's id (32-char UUID hex string).
     """
-    payload = payload or {}
+    payload = dict(payload or {})  # copy: don't mutate caller's dict
+
+    # 0. Stamp the active request id into the payload (Task 5.2 — mirror
+    # of server's app/events/emit.py).  When emitted outside a request
+    # scope (background tasks, scripts) the ContextVar is None and we
+    # omit the key — explicit absence is cleaner than literal None for
+    # downstream Cloud Logging filters.
+    if "_request_id" not in payload:
+        active_request_id = get_request_id()
+        if active_request_id is not None:
+            payload["_request_id"] = active_request_id
 
     # 1. Lock the latest event in this firm's chain to prevent forks.
     prev_event = _latest_event_for_firm(db, firm_id)

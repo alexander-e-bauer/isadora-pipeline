@@ -326,6 +326,21 @@ def _load_live_server_compute_hash():
         )
         return _server_compute_hash_impl
 
+    # Pre-stub app.middleware.request_id so server's emit.py can import
+    # `get_request_id` without resolving against the engine's app.py
+    # (which would shadow the server's `app/` package).  Same trick the
+    # _load_server_models helper uses above for app.config.
+    from types import ModuleType
+    if "app" not in sys.modules:
+        sys.modules["app"] = ModuleType("app")
+    if "app.middleware" not in sys.modules:
+        sys.modules["app.middleware"] = ModuleType("app.middleware")
+    if "app.middleware.request_id" not in sys.modules:
+        rid_stub = ModuleType("app.middleware.request_id")
+        rid_stub.get_request_id = lambda: None  # type: ignore[attr-defined]
+        rid_stub.HEADER_NAME = "X-Request-Id"  # type: ignore[attr-defined]
+        sys.modules["app.middleware.request_id"] = rid_stub
+
     mod = _load_module(server_emit_path, "_live_server_emit")
     return mod._compute_event_hash
 

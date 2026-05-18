@@ -17,6 +17,10 @@ import uvicorn
 from xyz.finazon_service.sql_service import init_db
 
 from config import PINECONE_API_KEY, PINECONE_HOST, logger, key, ANTHROPIC_API_KEY
+from xyz.observability import (
+    RequestIdMiddleware,
+    configure_logging,
+)
 from xyz.finazon_service.retrive_data import FinazonService
 from xyz.finazon_service.sql_service import (
     get_last_processed_timestamp,
@@ -39,6 +43,11 @@ from xyz.finazon_service.monitoring import monitor, MonitoredOperation
 pc = Pinecone(api_key=PINECONE_API_KEY)
 index = pc.Index(PINECONE_HOST)
 
+# Install structured JSON logging before FastAPI is built so the
+# "Application startup complete" line carries the documented schema.
+# Idempotent — safe under reloaders / repeated test imports.
+configure_logging()
+
 # Initialize FastAPI
 app = FastAPI(
     title="Financial Data Pipeline API",
@@ -47,6 +56,11 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
+
+# RequestIdMiddleware must be outermost so the correlation id is set
+# before auth + handler code runs.  add_middleware prepends to the
+# stack, so installing this first puts it on the outside.
+app.add_middleware(RequestIdMiddleware)
 
 # Add CORS middleware
 app.add_middleware(
