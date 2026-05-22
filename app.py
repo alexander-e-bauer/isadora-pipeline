@@ -1,6 +1,7 @@
 import json
 import logging
 import asyncio
+import os
 import threading
 import time
 from datetime import datetime
@@ -14,6 +15,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import uvicorn
+from xyz.agents.auth import is_demo_session
+from xyz.agents.demo_limits import enforce_demo_agent_rate_limit
 from xyz.finazon_service.sql_service import init_db
 
 from config import PINECONE_API_KEY, PINECONE_HOST, logger, key, ANTHROPIC_API_KEY
@@ -748,8 +751,9 @@ class ResearchRequest(BaseModel):
 
 
 @app.post("/agents/research")
-def research_endpoint(
+async def research_endpoint(
     body: ResearchRequest,
+    request: Request,
     _: str = Depends(verify_token),
 ):
     """Invoke the RESEARCH subagent for a ticker, account, or free-form brief.
@@ -768,8 +772,17 @@ def research_endpoint(
     if not body.symbol and not body.brief:
         raise HTTPException(status_code=422, detail="At least one of 'symbol' or 'brief' must be provided.")
 
+    is_demo = is_demo_session(request)
+    if is_demo:
+        await enforce_demo_agent_rate_limit()
+    model = (
+        os.environ.get("ANTHROPIC_MODEL_DEMO", "claude-haiku-4-5")
+        if is_demo
+        else os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    )
+
     agent = ResearchAgent(
-        anthropic_client=AnthropicClient(),
+        anthropic_client=AnthropicClient(model=model),
         options_client=OptionsClient(),
         db_session_factory=get_tenant_session,
     )
@@ -803,8 +816,9 @@ class AuthorRequest(BaseModel):
 
 
 @app.post("/agents/author")
-def author_endpoint(
+async def author_endpoint(
     body: AuthorRequest,
+    request: Request,
     _: str = Depends(verify_token),
 ):
     """Invoke the AUTHOR subagent.
@@ -826,8 +840,17 @@ def author_endpoint(
     from xyz.agents.lib.anthropic_client import AnthropicClient
     from xyz.tenant.db import get_tenant_session
 
+    is_demo = is_demo_session(request)
+    if is_demo:
+        await enforce_demo_agent_rate_limit()
+    model = (
+        os.environ.get("ANTHROPIC_MODEL_DEMO", "claude-haiku-4-5")
+        if is_demo
+        else os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    )
+
     agent = AuthorAgent(
-        anthropic_client=AnthropicClient(),
+        anthropic_client=AnthropicClient(model=model),
         db_session_factory=get_tenant_session,
     )
     try:
@@ -859,8 +882,9 @@ class BacktestRequest(BaseModel):
 
 
 @app.post("/agents/backtest")
-def backtest_endpoint(
+async def backtest_endpoint(
     body: BacktestRequest,
+    request: Request,
     _: str = Depends(verify_token),
 ):
     """Invoke the BACKTEST subagent (Task 4.3).
@@ -887,6 +911,9 @@ def backtest_endpoint(
     from xyz.agents.backtest import BacktestAgent
     from xyz.agents.schemas import BacktestInput
     from xyz.tenant.db import get_tenant_session
+
+    if is_demo_session(request):
+        await enforce_demo_agent_rate_limit()
 
     try:
         start = _date.fromisoformat(body.start_date)
@@ -922,8 +949,9 @@ class ProposeRequest(BaseModel):
 
 
 @app.post("/agents/propose")
-def propose_endpoint(
+async def propose_endpoint(
     body: ProposeRequest,
+    request: Request,
     _: str = Depends(verify_token),
 ):
     """Invoke the PROPOSE subagent (Task 4.4).
@@ -954,6 +982,9 @@ def propose_endpoint(
     from xyz.agents.schemas import ProposeInput
     from xyz.tenant.db import get_tenant_session
 
+    if is_demo_session(request):
+        await enforce_demo_agent_rate_limit()
+
     agent = ProposeAgent(db_session_factory=get_tenant_session)
     try:
         artifact = agent.run(ProposeInput(**body.model_dump()))
@@ -975,8 +1006,9 @@ class ValidateDslRequest(BaseModel):
 
 
 @app.post("/agents/validate-dsl")
-def validate_dsl_endpoint(
+async def validate_dsl_endpoint(
     body: ValidateDslRequest,
+    request: Request,
     _: str = Depends(verify_token),
 ):
     """Validate a Strategy DSL against the v1 schema.
@@ -986,10 +1018,16 @@ def validate_dsl_endpoint(
     to distinguish "real failure" from "DSL has errors".  The server-side
     PATCH hook in ``server-fastapi-wt/app/routes/strategies.py`` consumes
     this endpoint to gate dsl_json updates.
+
+    Pure DSL validation — no LLM call — so demo branching applies only
+    the cluster-wide rate limit (no model downgrade).
     """
     # Lazy import so route registration doesn't pull jsonschema for
     # unrelated endpoints.
     from xyz.dsl.validate import validate_dsl
+
+    if is_demo_session(request):
+        await enforce_demo_agent_rate_limit()
 
     valid, errors = validate_dsl(body.dsl)
     return {"valid": valid, "errors": errors}
