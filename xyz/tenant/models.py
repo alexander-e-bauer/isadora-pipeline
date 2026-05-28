@@ -644,6 +644,65 @@ class BacktestResult(Base):
         )
 
 
+class ForecastResult(Base):
+    """Read-only mirror of server's forecast_results table.
+
+    Engine NEVER reads or writes this table — server owns forecast result
+    artifacts. The mirror exists only for cross-app schema-parity checking
+    (test_tenant_metadata_matches_server will verify engine and server
+    definitions match column-by-column when the server-side model lands).
+    """
+
+    __tablename__ = "forecast_results"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    firm_id: Mapped[str] = mapped_column(String(36), ForeignKey("firms.id"), nullable=False, index=True)
+    strategy_id: Mapped[str] = mapped_column(String(36), ForeignKey("strategies.id"), nullable=False, index=True)
+    strategy_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    research_artifact_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    t0: Mapped[date] = mapped_column(Date, nullable=False)
+    horizon_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    n_paths: Mapped[int] = mapped_column(Integer, nullable=False)
+    forecast_seed: Mapped[int] = mapped_column(Integer, nullable=False)
+    calibration_source: Mapped[str] = mapped_column(String(32), nullable=False)
+    calibrated_params_json: Mapped[dict] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        nullable=False,
+        server_default="{}",
+    )
+    t0_market_context_json: Mapped[dict] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        nullable=False,
+        server_default="{}",
+    )
+    results_json: Mapped[dict] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
+        nullable=False,
+        server_default="{}",
+    )
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "firm_id", "strategy_id", "strategy_version", "content_hash",
+            name="uq_forecast_results_firm_strategy_version_hash"
+        ),
+        Index(
+            "ix_forecast_results_strategy_idx",
+            "firm_id", "strategy_id", "strategy_version", "t0",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ForecastResult id={self.id} strategy_id={self.strategy_id} "
+            f"v{self.strategy_version} hash={self.content_hash[:8]}...>"
+        )
+
+
 class Trade(Base):
     """Read-only mirror of server's trades table."""
 
