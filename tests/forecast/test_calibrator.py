@@ -52,7 +52,8 @@ def test_recovers_known_mu_sigma_from_synthetic_gbm():
     cal = _make_calibrator(db)
     params = cal.calibrate(symbol="AAPL", t0=date(2025, 12, 31),
                            overrides=ForecastOverrides())
-    assert abs(params.mu_spot - 0.08) < 0.05
+    # μ from 5y of daily returns has SE ≈ σ/√T_years ≈ 0.25/√5 ≈ 0.11 — widen tolerance accordingly
+    assert abs(params.mu_spot - 0.08) < 0.30
     assert abs(params.sigma_spot - 0.25) < 0.02
 
 
