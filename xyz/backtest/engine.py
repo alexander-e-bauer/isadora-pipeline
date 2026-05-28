@@ -59,6 +59,7 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from xyz.backtest.fill_model import DEFAULT_MAX_SLIPPAGE_PCT, compute_fill
+from xyz.common.canonical import quantize_floats as _quantize_floats
 from xyz.backtest.metrics import (
     avg_pnl,
     cagr,
@@ -124,24 +125,6 @@ def _safe_float(value: Any) -> float:
     if isinstance(value, Decimal):
         return float(value)
     return float(value)
-
-
-def _quantize_floats(obj: Any) -> Any:
-    """Recursively walk ``obj`` rendering every float as a 6-decimal string.
-
-    This is the canonicalisation step the content hash relies on.  All
-    floats are pre-rendered to strings so the hash is byte-stable
-    independent of the host's float-print rounding mode.
-    """
-    if isinstance(obj, float):
-        return f"{obj:.6f}"
-    if isinstance(obj, dict):
-        return {k: _quantize_floats(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_quantize_floats(v) for v in obj]
-    if isinstance(obj, (date, datetime)):
-        return obj.isoformat()
-    return obj
 
 
 def _content_hash(*, dsl: dict, start: date, end: date, metrics: dict) -> str:
