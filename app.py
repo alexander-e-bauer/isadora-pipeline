@@ -942,6 +942,80 @@ async def backtest_endpoint(
     return artifact.model_dump(mode="json")
 
 
+class ForecastRequest(BaseModel):
+    """POST /agents/forecast request body — mirrors ForecastInput schema."""
+    strategy_id: str
+    strategy_version: int
+    firm_id: str
+    actor_user_id: Optional[str] = None
+    dsl: Dict[str, Any]
+    t0: str           # ISO date YYYY-MM-DD
+    horizon_days: int = 252
+    n_paths: int = 1000
+    forecast_seed: int
+    overrides: Optional[Dict[str, Any]] = None
+    research_artifact_id: Optional[str] = None
+
+
+@app.post("/agents/forecast")
+async def forecast_endpoint(
+    body: ForecastRequest,
+    request: Request,
+    _: str = Depends(verify_token),
+):
+    """Invoke the FORECAST subagent (Monte Carlo forward simulation).
+
+    Body: ``{strategy_id, strategy_version, firm_id, actor_user_id?,
+    dsl, t0, horizon_days?, n_paths?, forecast_seed, overrides?,
+    research_artifact_id?}``.
+
+    Returns the ForecastArtifact and emits a ``forecast.result`` event.
+
+    Error mapping
+    -------------
+    - 422 on body validation (FastAPI default).
+    - 400 on calibration or data errors raised as ValueError by the agent
+      (e.g. unknown symbol, no chain data).
+    """
+    from datetime import date as _date
+    from xyz.forecast.agent import ForecastAgent
+    from xyz.forecast.schemas import ForecastInput, ForecastOverrides
+    from xyz.forecast.db import make_forecast_db
+
+    if is_demo_session(request):
+        await enforce_demo_agent_rate_limit()
+
+    try:
+        t0 = _date.fromisoformat(body.t0)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"t0 must be ISO YYYY-MM-DD: {exc}",
+        ) from exc
+
+    overrides = ForecastOverrides(**(body.overrides or {}))
+
+    db = make_forecast_db()
+    agent = ForecastAgent(db=db)
+    try:
+        artifact = agent.run(input=ForecastInput(
+            strategy_id=body.strategy_id,
+            strategy_version=body.strategy_version,
+            firm_id=body.firm_id,
+            actor_user_id=body.actor_user_id,
+            dsl=body.dsl,
+            t0=t0,
+            horizon_days=body.horizon_days,
+            n_paths=body.n_paths,
+            forecast_seed=body.forecast_seed,
+            overrides=overrides,
+            research_artifact_id=body.research_artifact_id,
+        ))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return artifact.model_dump(mode="json")
+
+
 class ProposeRequest(BaseModel):
     firm_id: int
     deployment_id: int
