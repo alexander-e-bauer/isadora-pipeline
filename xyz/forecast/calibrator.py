@@ -111,6 +111,9 @@ class Calibrator:
         if overrides.rho_override is not None:
             rho = overrides.rho_override
         # Clamp ρ into [-0.99, 0.99] (Cholesky needs strictly less than 1)
+        # Guard against NaN (e.g. zero-variance IV series in tests/prod edge cases)
+        if not np.isfinite(rho):
+            rho = 0.0
         rho = max(min(rho, 0.99), -0.99)
 
         # 9. Calibration sanity warning
