@@ -24,6 +24,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -663,7 +664,7 @@ class ForecastResult(Base):
     t0: Mapped[date] = mapped_column(Date, nullable=False)
     horizon_days: Mapped[int] = mapped_column(Integer, nullable=False)
     n_paths: Mapped[int] = mapped_column(Integer, nullable=False)
-    forecast_seed: Mapped[int] = mapped_column(Integer, nullable=False)
+    forecast_seed: Mapped[int] = mapped_column(BigInteger, nullable=False)
     calibration_source: Mapped[str] = mapped_column(String(32), nullable=False)
     calibrated_params_json: Mapped[dict] = mapped_column(
         JSON().with_variant(JSONB(), "postgresql"),
