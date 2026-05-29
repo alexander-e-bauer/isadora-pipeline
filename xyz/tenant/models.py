@@ -655,11 +655,11 @@ class ForecastResult(Base):
 
     __tablename__ = "forecast_results"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    firm_id: Mapped[str] = mapped_column(String(36), ForeignKey("firms.id"), nullable=False, index=True)
-    strategy_id: Mapped[str] = mapped_column(String(36), ForeignKey("strategies.id"), nullable=False, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    firm_id: Mapped[int] = mapped_column(ForeignKey("firms.id"), nullable=False, index=True)
+    strategy_id: Mapped[int] = mapped_column(ForeignKey("strategies.id"), nullable=False, index=True)
     strategy_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    research_artifact_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    research_artifact_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     t0: Mapped[date] = mapped_column(Date, nullable=False)
     horizon_days: Mapped[int] = mapped_column(Integer, nullable=False)
     n_paths: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -691,7 +691,7 @@ class ForecastResult(Base):
             name="uq_forecast_results_firm_strategy_version_hash"
         ),
         Index(
-            "ix_forecast_results_strategy_idx",
+            "forecast_results_strategy_idx",
             "firm_id", "strategy_id", "strategy_version", "t0",
         ),
     )
