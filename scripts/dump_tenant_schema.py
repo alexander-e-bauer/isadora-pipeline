@@ -57,6 +57,7 @@ CANONICAL_TENANT_TABLES: frozenset[str] = frozenset({
     "trades",
     "events",
     "backtest_results",
+    "forecast_results",
 })
 
 
