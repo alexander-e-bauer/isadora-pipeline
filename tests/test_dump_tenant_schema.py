@@ -31,6 +31,7 @@ _CANONICAL_TABLES = frozenset({
     "account_autonomy", "broker_connections", "subscriptions",
     "payment_methods", "processed_stripe_events", "strategies",
     "deployments", "positions", "trades", "events", "backtest_results",
+    "forecast_results",
 })
 
 # Finazon / polygon tables that engine OWNS but should NEVER appear in the
